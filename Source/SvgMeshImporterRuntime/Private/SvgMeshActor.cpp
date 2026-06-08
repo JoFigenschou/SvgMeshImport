@@ -6,13 +6,44 @@
 #include "ProceduralMeshComponent.h"
 
 #include "Engine/World.h"
+#include "Materials/MaterialInterface.h"
 #include "Misc/Paths.h"
+
+#if WITH_EDITOR
+#include "UObject/UnrealType.h"
+#endif
 
 ASvgMeshActor::ASvgMeshActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	ProceduralMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("ProceduralMesh"));
 	SetRootComponent(ProceduralMesh);
+}
+
+#if WITH_EDITOR
+void ASvgMeshActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+
+	if (PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(ASvgMeshActor, MeshMaterial))
+	{
+		ApplyMeshMaterial();
+	}
+}
+#endif
+
+void ASvgMeshActor::ApplyMeshMaterial()
+{
+	if (!ProceduralMesh || !MeshMaterial || ProceduralMesh->GetNumSections() <= 0)
+	{
+		return;
+	}
+
+	ProceduralMesh->SetMaterial(0, MeshMaterial);
+	UE_LOG(LogSvgMeshImporter, Log,
+		TEXT("[SvgMeshActor] '%s' applied material '%s' to section 0."),
+		*GetName(),
+		*MeshMaterial->GetName());
 }
 
 void ASvgMeshActor::BeginPlay()
@@ -92,6 +123,7 @@ bool ASvgMeshActor::RebuildMesh()
 	}
 
 	FSvgProceduralMeshBuilder::ApplyMeshData(ProceduralMesh, Result.MeshData, bCreateCollision);
+	ApplyMeshMaterial();
 
 	const FBox SphereBounds = ProceduralMesh->Bounds.GetBox();
 	UE_LOG(LogSvgMeshImporter, Log,
@@ -106,7 +138,7 @@ bool ASvgMeshActor::RebuildMesh()
 	if (!ProceduralMesh->GetMaterial(0))
 	{
 		UE_LOG(LogSvgMeshImporter, Warning,
-			TEXT("[SvgMeshActor] '%s' ProceduralMesh section 0 has no material assigned. The mesh may be invisible in game."),
+			TEXT("[SvgMeshActor] '%s' ProceduralMesh section 0 has no material assigned. Assign Mesh Material under SVG or the mesh may be invisible in game."),
 			*GetName());
 	}
 

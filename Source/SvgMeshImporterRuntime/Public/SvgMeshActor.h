@@ -6,6 +6,7 @@
 #include "SvgMeshActor.generated.h"
 
 class UProceduralMeshComponent;
+class UMaterialInterface;
 
 UCLASS(Blueprintable)
 class SVGMESHIMPORTERRUNTIME_API ASvgMeshActor : public AActor
@@ -17,6 +18,10 @@ public:
 
 	virtual void BeginPlay() override;
 
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "SVG")
 	TObjectPtr<UProceduralMeshComponent> ProceduralMesh;
 
@@ -25,6 +30,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
 	FSvgMeshSettings MeshSettings;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
+	TObjectPtr<UMaterialInterface> MeshMaterial;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
 	bool bBuildOnBeginPlay = false;
@@ -37,4 +45,7 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "SVG")
 	FString LastBuildError;
+
+private:
+	void ApplyMeshMaterial();
 };
