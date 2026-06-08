@@ -7,5 +7,10 @@
 class FSvgExtruder
 {
 public:
-	static void Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMeshData& InOutMesh, float MinEdgeLength = 1.f);
+	static void Extrude(
+		const FSvgTessellatedCap& TopCap,
+		float Depth,
+		FSvgMeshData& InOutMesh,
+		float MinEdgeLength = 1.f,
+		bool bExtrudeAlongPositiveZ = true);
 };

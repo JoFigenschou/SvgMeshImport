@@ -18,6 +18,10 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
 	float ExtrudeDepth = 10.f;
 
+	/** When true, extrude from the SVG plane along +Z. When false, extrude along -Z. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
+	bool bExtrudeAlongPositiveZ = true;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
 	float ChamferDistance = 0.f;
 

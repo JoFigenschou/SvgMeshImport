@@ -79,10 +79,11 @@ bool ASvgMeshActor::RebuildMesh()
 	LastBuildError.Reset();
 
 	UE_LOG(LogSvgMeshImporter, Log,
-		TEXT("[SvgMeshActor] '%s' RebuildMesh SvgFilePath='%s' ExtrudeDepth=%.3f Scale=%.3f FlipY=%s Collision=%s"),
+		TEXT("[SvgMeshActor] '%s' RebuildMesh SvgFilePath='%s' ExtrudeDepth=%.3f ExtrudeDir=%s Scale=%.3f FlipY=%s Collision=%s"),
 		*GetName(),
 		*SvgFilePath,
 		MeshSettings.ExtrudeDepth,
+		MeshSettings.bExtrudeAlongPositiveZ ? TEXT("+Z") : TEXT("-Z"),
 		MeshSettings.SvgScale,
 		MeshSettings.bFlipY ? TEXT("true") : TEXT("false"),
 		bCreateCollision ? TEXT("true") : TEXT("false"));

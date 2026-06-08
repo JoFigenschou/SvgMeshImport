@@ -2,7 +2,62 @@
 
 #include "SvgMeshImporterLog.h"
 
-void FSvgExtruder::Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMeshData& InOutMesh, float MinEdgeLength)
+namespace SvgExtruderPrivate
+{
+	static FVector ComputeOutwardSideNormal(const FVector& Edge)
+	{
+		FVector SideNormal = FVector::CrossProduct(Edge, FVector::UpVector);
+		SideNormal.Z = 0.f;
+		if (!SideNormal.Normalize())
+		{
+			SideNormal = FVector(1.f, 0.f, 0.f);
+		}
+		return SideNormal;
+	}
+
+	static void AddSideTriangles(TArray<int32>& Triangles, int32 V0, int32 V1, int32 V2, int32 V3, const FVector& SideNormal, const TArray<FVector>& Vertices)
+	{
+		const auto FaceNormal = [&Vertices](int32 A, int32 B, int32 C)
+		{
+			return FVector::CrossProduct(Vertices[B] - Vertices[A], Vertices[C] - Vertices[A]).GetSafeNormal();
+		};
+
+		const int32 TriA[] = { V0, V1, V2 };
+		const int32 TriB[] = { V0, V2, V3 };
+		if (FVector::DotProduct(FaceNormal(TriA[0], TriA[1], TriA[2]), SideNormal) < 0.f)
+		{
+			Triangles.Add(TriA[0]);
+			Triangles.Add(TriA[2]);
+			Triangles.Add(TriA[1]);
+		}
+		else
+		{
+			Triangles.Add(TriA[0]);
+			Triangles.Add(TriA[1]);
+			Triangles.Add(TriA[2]);
+		}
+
+		if (FVector::DotProduct(FaceNormal(TriB[0], TriB[1], TriB[2]), SideNormal) < 0.f)
+		{
+			Triangles.Add(TriB[0]);
+			Triangles.Add(TriB[2]);
+			Triangles.Add(TriB[1]);
+		}
+		else
+		{
+			Triangles.Add(TriB[0]);
+			Triangles.Add(TriB[1]);
+			Triangles.Add(TriB[2]);
+		}
+	}
+}
+
+void FSvgExtruder::Extrude(
+	const FSvgTessellatedCap& TopCap,
+	float Depth,
+	FSvgMeshData& InOutMesh,
+	float MinEdgeLength,
+	bool bExtrudeAlongPositiveZ)
 {
 	InOutMesh = FSvgMeshData();
 
@@ -16,6 +71,7 @@ void FSvgExtruder::Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMe
 		return;
 	}
 
+	const float BottomZOffset = bExtrudeAlongPositiveZ ? Depth : -Depth;
 	const int32 BottomOffset = TopCount;
 	InOutMesh.Vertices.Reserve(TopCount * 2);
 	InOutMesh.Normals.Reserve(TopCount * 2);
@@ -28,7 +84,7 @@ void FSvgExtruder::Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMe
 	}
 	for (const FVector& V : TopCap.Vertices)
 	{
-		InOutMesh.Vertices.Add(FVector(V.X, V.Y, V.Z - Depth));
+		InOutMesh.Vertices.Add(FVector(V.X, V.Y, V.Z + BottomZOffset));
 		InOutMesh.Normals.Add(-FVector::UpVector);
 	}
 
@@ -67,12 +123,7 @@ void FSvgExtruder::Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMe
 		const FVector BA = InOutMesh.Vertices[ABot];
 		const FVector BB = InOutMesh.Vertices[BBot];
 		const FVector Edge = TB - TA;
-		FVector SideNormal = FVector::CrossProduct(Edge, FVector::UpVector);
-		SideNormal.Z = 0.f;
-		if (!SideNormal.Normalize())
-		{
-			SideNormal = FVector(1.f, 0.f, 0.f);
-		}
+		const FVector SideNormal = SvgExtruderPrivate::ComputeOutwardSideNormal(Edge);
 
 		const int32 V0 = SideBase + (E / 2) * 4;
 		InOutMesh.Vertices.Add(TA);
@@ -84,19 +135,12 @@ void FSvgExtruder::Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMe
 			InOutMesh.Normals.Add(SideNormal);
 		}
 
-		InOutMesh.Triangles.Add(V0);
-		InOutMesh.Triangles.Add(V0 + 1);
-		InOutMesh.Triangles.Add(V0 + 2);
-		InOutMesh.Triangles.Add(V0);
-		InOutMesh.Triangles.Add(V0 + 2);
-		InOutMesh.Triangles.Add(V0 + 3);
+		SvgExtruderPrivate::AddSideTriangles(InOutMesh.Triangles, V0, V0 + 1, V0 + 2, V0 + 3, SideNormal, InOutMesh.Vertices);
 	}
 
-	if (SkippedEdges > 0)
-	{
-		UE_LOG(LogSvgMeshImporter, Verbose,
-			TEXT("[SvgExtruder] Skipped %d short boundary edge(s) below MinEdgeLength=%.3f"),
-			SkippedEdges,
-			MinEdgeLength);
-	}
+	UE_LOG(LogSvgMeshImporter, Verbose,
+		TEXT("[SvgExtruder] Extruded %s Z by %.3f (skipped %d short edges)"),
+		bExtrudeAlongPositiveZ ? TEXT("+") : TEXT("-"),
+		Depth,
+		SkippedEdges);
 }

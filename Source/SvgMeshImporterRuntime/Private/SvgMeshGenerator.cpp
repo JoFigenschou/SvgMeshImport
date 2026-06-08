@@ -172,7 +172,7 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 		}
 
 		FSvgMeshData Part;
-		FSvgExtruder::Extrude(Cap, Settings.ExtrudeDepth, Part, Settings.MinEdgeLength);
+		FSvgExtruder::Extrude(Cap, Settings.ExtrudeDepth, Part, Settings.MinEdgeLength, Settings.bExtrudeAlongPositiveZ);
 		FSvgChamfer::ApplyChamfer(Part, Settings);
 		FSvgUvGenerator::GenerateUVs(Part, Settings, Bounds);
 
