@@ -34,12 +34,29 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgShapeHole
 };
 
 USTRUCT(BlueprintType)
-struct SVGMESHIMPORTERRUNTIME_API FSvgImportedShape
+struct SVGMESHIMPORTERRUNTIME_API FSvgShapeOuterPart
 {
 	GENERATED_BODY()
 
 	UPROPERTY(BlueprintReadOnly, Category = "Shape")
+	TArray<FVector2D> Points;
+};
+
+USTRUCT(BlueprintType)
+struct SVGMESHIMPORTERRUNTIME_API FSvgImportedShape
+{
+	GENERATED_BODY()
+
+	/** SVG element id when available (e.g. state code on map SVGs). */
+	UPROPERTY(BlueprintReadOnly, Category = "Shape")
+	FString ShapeName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Shape")
 	TArray<FVector2D> Outer;
+
+	/** Disconnected outer rings that share the same SVG id (e.g. islands) merged into one mesh. */
+	UPROPERTY(BlueprintReadOnly, Category = "Shape")
+	TArray<FSvgShapeOuterPart> AdditionalOuters;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Shape")
 	TArray<FSvgShapeHole> Holes;

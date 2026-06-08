@@ -7,5 +7,5 @@
 class FSvgParser
 {
 public:
-	static bool Parse(const FString& SvgContent, const FSvgMeshSettings& Settings, TArray<FSvgImportedShape>& OutShapes, FString& OutError);
+	static bool Parse(const FString& SvgContent, FSvgMeshSettings& Settings, TArray<FSvgImportedShape>& OutShapes, FString& OutError);
 };

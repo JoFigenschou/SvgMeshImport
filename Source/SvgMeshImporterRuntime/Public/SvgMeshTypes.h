@@ -71,6 +71,10 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshBuildResult
 	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	bool bSuccess = false;
 
+	/** Union Shapes value used for this build (may differ after auto-detection). */
+	UPROPERTY(BlueprintReadOnly, Category = "Result")
+	bool bUnionShapesUsed = false;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	FString ErrorMessage;
 

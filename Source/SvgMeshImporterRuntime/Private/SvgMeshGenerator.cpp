@@ -80,6 +80,13 @@ namespace SvgMeshGeneratorPrivate
 			{
 				Bounds += P;
 			}
+			for (const FSvgShapeOuterPart& AdditionalOuter : Shape.AdditionalOuters)
+			{
+				for (const FVector2D& P : AdditionalOuter.Points)
+				{
+					Bounds += P;
+				}
+			}
 			for (const FSvgShapeHole& Hole : Shape.Holes)
 			{
 				for (const FVector2D& P : Hole.Points)
@@ -118,6 +125,14 @@ namespace SvgMeshGeneratorPrivate
 		FSvgFlatCapMesh::ApplyComponentLocalFlatBasis(Mesh);
 		return Mesh;
 	}
+
+	static void CenterMeshData(FSvgMeshData& Mesh, const FVector& Offset)
+	{
+		for (FVector& Vertex : Mesh.Vertices)
+		{
+			Vertex -= Offset;
+		}
+	}
 }
 
 FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgFile(const FString& FilePath, const FSvgMeshSettings& Settings)
@@ -148,7 +163,8 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 
 	TArray<FSvgImportedShape> Shapes;
 	FString ParseError;
-	if (!FSvgParser::Parse(SvgContent, Settings, Shapes, ParseError))
+	FSvgMeshSettings EffectiveSettings = Settings;
+	if (!FSvgParser::Parse(SvgContent, EffectiveSettings, Shapes, ParseError))
 	{
 		Result.bSuccess = false;
 		Result.ErrorMessage = ParseError;
@@ -159,12 +175,25 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 		return Result;
 	}
 
+	Result.bUnionShapesUsed = EffectiveSettings.bUnionShapes;
+
 	UE_LOG(LogSvgMeshImporter, Log,
-		TEXT("[SvgMeshGenerator] Parsed '%s' -> %d shape(s)"),
+		TEXT("[SvgMeshGenerator] Parsed '%s' -> %d shape(s) (UnionShapes=%s)"),
 		*SourceLabel,
-		Shapes.Num());
+		Shapes.Num(),
+		EffectiveSettings.bUnionShapes ? TEXT("true") : TEXT("false"));
+
+	if (EffectiveSettings.bUnionShapes)
+	{
+		UE_LOG(LogSvgMeshImporter, Warning,
+			TEXT("[SvgMeshGenerator] Union Shapes is enabled for '%s'. Touching paths merge into fewer polygons (e.g. entire US mainland -> 1 shape). Disable for one mesh per SVG path."),
+			*SourceLabel);
+	}
 
 	const FBox2D Bounds = SvgMeshGeneratorPrivate::ComputeBounds(Shapes);
+	const FVector CenterOffset = EffectiveSettings.bCenterMesh
+		? FVector(Bounds.GetCenter().X, Bounds.GetCenter().Y, 0.f)
+		: FVector::ZeroVector;
 	FSvgMeshData Combined;
 	TArray<FSvgShapeMesh> ShapeMeshes;
 	ShapeMeshes.Reserve(Shapes.Num());
@@ -174,7 +203,7 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 		FSvgImportedShape& Shape = Shapes[ShapeIndex];
 		FSvgTessellatedCap Cap;
 		FString TessError;
-		if (!FSvgTessellator::TessellateShape(Shape, Settings, Cap, TessError))
+		if (!FSvgTessellator::TessellateShape(Shape, EffectiveSettings, Cap, TessError))
 		{
 			Shape.Diagnostics.bSuccess = false;
 			Shape.Diagnostics.Message = TessError;
@@ -186,7 +215,11 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 		}
 
 		FSvgMeshData Part = SvgMeshGeneratorPrivate::BuildFlatCapMesh(Cap);
-		FSvgUvGenerator::GenerateUVs(Part, Settings, Bounds);
+		if (!CenterOffset.IsNearlyZero())
+		{
+			SvgMeshGeneratorPrivate::CenterMeshData(Part, CenterOffset);
+		}
+		FSvgUvGenerator::GenerateUVs(Part, EffectiveSettings, Bounds);
 
 		Shape.Diagnostics.bSuccess = true;
 		Shape.Diagnostics.TriangleCount = Part.Triangles.Num() / 3;

@@ -55,7 +55,15 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
 	ESvgWindingRule WindingRule = ESvgWindingRule::NonZero;
 
-	/** When false, each SVG path becomes its own shape/mesh (e.g. one mesh per US state). When true, paths are unioned first. */
+	/** When false, each SVG path becomes its own shape/mesh. Auto-disabled when the file has multiple filled paths. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
 	bool bUnionShapes = false;
+
+	/** Minimum filled SVG path elements before Union Shapes is auto-disabled. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG", meta = (ClampMin = "2"))
+	int32 AutoSeparatePathThreshold = 2;
+
+	/** Move the built mesh so the SVG bounds center sits on the actor origin. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
+	bool bCenterMesh = true;
 };

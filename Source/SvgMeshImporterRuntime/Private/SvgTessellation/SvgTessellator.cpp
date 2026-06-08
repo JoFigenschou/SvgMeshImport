@@ -1,5 +1,6 @@
 ﻿#include "SvgTessellation/SvgTessellator.h"
 
+#include "SvgMeshImporterLog.h"
 #include "SvgPolygon/SvgPolygonCleanup.h"
 #include "SvgMeshSettings.h"
 
@@ -36,107 +37,140 @@ namespace SvgTessellatorPrivate
 	}
 }
 
+namespace SvgTessellatorPrivate
+{
+	using Point = std::array<double, 2>;
+	using Polygon = std::vector<std::vector<Point>>;
+
+	static bool TessellatePolygonWithHoles(
+		const TArray<FVector2D>& Outer,
+		const TArray<FSvgShapeHole>& Holes,
+		const FSvgMeshSettings& Settings,
+		FSvgTessellatedCap& OutCap,
+		FString& OutError)
+	{
+		if (Outer.Num() < 3)
+		{
+			OutError = TEXT("Outer contour has fewer than 3 points.");
+			return false;
+		}
+
+		Polygon PolygonData;
+		PolygonData.reserve(static_cast<size_t>(1 + Holes.Num()));
+
+		TArray<FVector2D> OuterRingPoints = Outer;
+		FSvgPolygonCleanup::CleanRing(OuterRingPoints, Settings);
+		OuterRingPoints = EnsureWinding(OuterRingPoints, false);
+		std::vector<Point> OuterRing;
+		OuterRing.reserve(static_cast<size_t>(OuterRingPoints.Num()));
+		for (const FVector2D& P : OuterRingPoints)
+		{
+			OuterRing.push_back({ static_cast<double>(P.X), static_cast<double>(P.Y) });
+		}
+		PolygonData.push_back(std::move(OuterRing));
+
+		for (const FSvgShapeHole& Hole : Holes)
+		{
+			if (Hole.Points.Num() < 3)
+			{
+				continue;
+			}
+			TArray<FVector2D> HoleWound = Hole.Points;
+			FSvgPolygonCleanup::CleanRing(HoleWound, Settings);
+			HoleWound = EnsureWinding(HoleWound, true);
+			std::vector<Point> HoleRing;
+			HoleRing.reserve(static_cast<size_t>(HoleWound.Num()));
+			for (const FVector2D& P : HoleWound)
+			{
+				HoleRing.push_back({ static_cast<double>(P.X), static_cast<double>(P.Y) });
+			}
+			PolygonData.push_back(std::move(HoleRing));
+		}
+
+		mapbox::detail::Earcut<uint32_t> Earcut;
+		Earcut(PolygonData);
+		const std::vector<uint32_t>& Indices = Earcut.indices;
+		if (Indices.empty())
+		{
+			OutError = TEXT("Earcut failed to triangulate shape.");
+			return false;
+		}
+
+		TArray<FVector2D> All2D;
+		All2D.Reserve(OuterRingPoints.Num());
+		for (const FVector2D& P : OuterRingPoints)
+		{
+			All2D.Add(P);
+		}
+		for (const FSvgShapeHole& Hole : Holes)
+		{
+			if (Hole.Points.Num() < 3)
+			{
+				continue;
+			}
+			TArray<FVector2D> HoleWound = Hole.Points;
+			FSvgPolygonCleanup::CleanRing(HoleWound, Settings);
+			HoleWound = EnsureWinding(HoleWound, true);
+			for (const FVector2D& P : HoleWound)
+			{
+				All2D.Add(P);
+			}
+		}
+
+		const int32 BaseVertex = OutCap.Vertices.Num();
+		OutCap.Vertices.Reserve(BaseVertex + All2D.Num());
+		for (const FVector2D& P : All2D)
+		{
+			OutCap.Vertices.Add(FVector(P.X, P.Y, 0.f));
+		}
+
+		OutCap.Triangles.Reserve(OutCap.Triangles.Num() + static_cast<int32>(Indices.size()));
+		for (uint32_t Idx : Indices)
+		{
+			OutCap.Triangles.Add(BaseVertex + static_cast<int32>(Idx));
+		}
+
+		OutCap.Normals.AddDefaulted(All2D.Num());
+		for (int32 I = BaseVertex; I < OutCap.Vertices.Num(); ++I)
+		{
+			OutCap.Normals[I] = FVector::UpVector;
+		}
+
+		OutCap.UV0.AddDefaulted(All2D.Num());
+
+		for (int32 I = 0; I < OuterRingPoints.Num(); ++I)
+		{
+			const int32 Next = (I + 1) % OuterRingPoints.Num();
+			OutCap.BoundaryEdges.Add(BaseVertex + I);
+			OutCap.BoundaryEdges.Add(BaseVertex + Next);
+		}
+
+		return true;
+	}
+}
+
 bool FSvgTessellator::TessellateShape(const FSvgImportedShape& Shape, const FSvgMeshSettings& Settings, FSvgTessellatedCap& OutCap, FString& OutError)
 {
 	OutCap = FSvgTessellatedCap();
 	OutError.Reset();
 
-	if (Shape.Outer.Num() < 3)
+	if (!SvgTessellatorPrivate::TessellatePolygonWithHoles(Shape.Outer, Shape.Holes, Settings, OutCap, OutError))
 	{
-		OutError = TEXT("Outer contour has fewer than 3 points.");
 		return false;
 	}
 
-	using Point = std::array<double, 2>;
-	using Polygon = std::vector<std::vector<Point>>;
-
-	Polygon PolygonData;
-	PolygonData.reserve(static_cast<size_t>(1 + Shape.Holes.Num()));
-
-	TArray<FVector2D> Outer = Shape.Outer;
-	FSvgPolygonCleanup::CleanRing(Outer, Settings);
-	Outer = SvgTessellatorPrivate::EnsureWinding(Outer, false);
-	std::vector<Point> OuterRing;
-	OuterRing.reserve(static_cast<size_t>(Outer.Num()));
-	for (const FVector2D& P : Outer)
+	for (const FSvgShapeOuterPart& AdditionalOuter : Shape.AdditionalOuters)
 	{
-		OuterRing.push_back({ static_cast<double>(P.X), static_cast<double>(P.Y) });
-	}
-	PolygonData.push_back(std::move(OuterRing));
-
-	for (const FSvgShapeHole& Hole : Shape.Holes)
-	{
-		if (Hole.Points.Num() < 3)
+		FString PartError;
+		if (!SvgTessellatorPrivate::TessellatePolygonWithHoles(AdditionalOuter.Points, TArray<FSvgShapeHole>(), Settings, OutCap, PartError))
 		{
-			continue;
-		}
-		TArray<FVector2D> HoleWound = Hole.Points;
-		FSvgPolygonCleanup::CleanRing(HoleWound, Settings);
-		HoleWound = SvgTessellatorPrivate::EnsureWinding(HoleWound, true);
-		std::vector<Point> HoleRing;
-		HoleRing.reserve(static_cast<size_t>(HoleWound.Num()));
-		for (const FVector2D& P : HoleWound)
-		{
-			HoleRing.push_back({ static_cast<double>(P.X), static_cast<double>(P.Y) });
-		}
-		PolygonData.push_back(std::move(HoleRing));
-	}
-
-	mapbox::detail::Earcut<uint32_t> Earcut;
-	Earcut(PolygonData);
-	const std::vector<uint32_t>& Indices = Earcut.indices;
-
-	if (Indices.empty())
-	{
-		OutError = TEXT("Earcut failed to triangulate shape.");
-		return false;
-	}
-
-	TArray<FVector2D> All2D;
-	All2D.Reserve(Outer.Num());
-	for (const FVector2D& P : Outer)
-	{
-		All2D.Add(P);
-	}
-	TArray<int32> HoleOffsets;
-	for (const FSvgShapeHole& Hole : Shape.Holes)
-	{
-		if (Hole.Points.Num() < 3)
-		{
-			continue;
-		}
-		HoleOffsets.Add(All2D.Num());
-		TArray<FVector2D> HoleWound = Hole.Points;
-		FSvgPolygonCleanup::CleanRing(HoleWound, Settings);
-		HoleWound = SvgTessellatorPrivate::EnsureWinding(HoleWound, true);
-		for (const FVector2D& P : HoleWound)
-		{
-			All2D.Add(P);
+			UE_LOG(LogSvgMeshImporter, Warning,
+				TEXT("[SvgTessellator] Failed to tessellate additional outer for '%s': %s"),
+				*Shape.ShapeName,
+				*PartError);
 		}
 	}
 
-	OutCap.Vertices.Reserve(All2D.Num());
-	for (const FVector2D& P : All2D)
-	{
-		OutCap.Vertices.Add(FVector(P.X, P.Y, 0.f));
-	}
-
-	OutCap.Triangles.Reserve(static_cast<int32>(Indices.size()));
-	for (uint32_t Idx : Indices)
-	{
-		OutCap.Triangles.Add(static_cast<int32>(Idx));
-	}
-
-	OutCap.Normals.Init(FVector::UpVector, OutCap.Vertices.Num());
-	OutCap.UV0.Init(FVector2D::ZeroVector, OutCap.Vertices.Num());
-
-	for (int32 I = 0; I < Outer.Num(); ++I)
-	{
-		const int32 Next = (I + 1) % Outer.Num();
-		OutCap.BoundaryEdges.Add(I);
-		OutCap.BoundaryEdges.Add(Next);
-	}
-
-	return true;
+	return !OutCap.Vertices.IsEmpty();
 }
 

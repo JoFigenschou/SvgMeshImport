@@ -1,5 +1,7 @@
 ﻿#include "SvgMeshImporterEditor.h"
 
+#include "SvgMeshBakeBridge.h"
+#include "SvgStaticMeshBaker.h"
 #include "SSvgPreviewPanel.h"
 #include "ToolMenus.h"
 #include "Widgets/Docking/SDockTab.h"
@@ -19,6 +21,8 @@ static TSharedRef<SDockTab> SpawnSvgPreviewTab(const FSpawnTabArgs& Args)
 
 void FSvgMeshImporterEditorModule::StartupModule()
 {
+	GSvgBakeStaticMeshesDelegate.BindStatic(&FSvgStaticMeshBaker::BakeAndApply);
+
 	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(SvgMeshPreviewTabName, FOnSpawnTab::CreateStatic(&SpawnSvgPreviewTab))
 		.SetDisplayName(NSLOCTEXT("SvgMeshImporter", "SvgMeshPreviewTab", "SVG Mesh Preview"))
 		.SetTooltipText(NSLOCTEXT("SvgMeshImporter", "SvgMeshPreviewTabTip", "Preview SVG to procedural mesh conversion"))
@@ -29,6 +33,8 @@ void FSvgMeshImporterEditorModule::StartupModule()
 
 void FSvgMeshImporterEditorModule::ShutdownModule()
 {
+	GSvgBakeStaticMeshesDelegate.Unbind();
+
 	UToolMenus::UnRegisterStartupCallback(this);
 	UToolMenus::UnregisterOwner(this);
 	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(SvgMeshPreviewTabName);

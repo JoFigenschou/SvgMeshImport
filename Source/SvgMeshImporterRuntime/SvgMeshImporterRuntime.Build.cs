@@ -44,5 +44,10 @@ public class SvgMeshImporterRuntime : ModuleRules
 		}
 
 		// Clipper2SourceFiles are compiled in Private/ThirdParty/Clipper2Impl.cpp (single translation unit).
+
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.Add("UnrealEd");
+		}
 	}
 }

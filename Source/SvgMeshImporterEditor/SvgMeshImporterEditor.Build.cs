@@ -27,7 +27,12 @@ public class SvgMeshImporterEditor : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
 			"ApplicationCore",
-			"DesktopPlatform"
+			"DesktopPlatform",
+			"MeshConversion",
+			"MeshDescription",
+			"StaticMeshDescription",
+			"AssetRegistry",
+			"EditorScriptingUtilities"
 		});
 	}
 }
