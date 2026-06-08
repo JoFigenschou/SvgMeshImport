@@ -39,7 +39,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
 	FString SvgFilePath;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG", meta = (ShowOnlyInnerProperties))
 	FSvgMeshSettings MeshSettings;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
