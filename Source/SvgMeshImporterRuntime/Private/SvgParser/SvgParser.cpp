@@ -14,10 +14,11 @@ THIRD_PARTY_INCLUDES_END
 
 namespace SvgParserPrivate
 {
-	static FVector2D ToVec2(float X, float Y, bool bFlipY, float SvgHeight)
+	static FVector2D ToVec2(float X, float Y, bool bFlipX, bool bFlipY, float SvgWidth, float SvgHeight)
 	{
+		const float XVal = bFlipX ? (SvgWidth - X) : X;
 		const float YVal = bFlipY ? (SvgHeight - Y) : Y;
-		return FVector2D(X, YVal);
+		return FVector2D(XVal, YVal);
 	}
 
 	static double PolygonArea(const TArray<FVector2D>& Poly)
@@ -142,7 +143,9 @@ namespace SvgParserPrivate
 
 	static bool ExtractPathLoop(
 		const NSVGpath* Path,
+		bool bFlipX,
 		bool bFlipY,
+		float SvgWidth,
 		float SvgHeight,
 		float Scale,
 		const FSvgMeshSettings& Settings,
@@ -154,16 +157,16 @@ namespace SvgParserPrivate
 			return false;
 		}
 
-		const FVector2D Start = ToVec2(Path->pts[0], Path->pts[1], bFlipY, SvgHeight) * Scale;
+		const FVector2D Start = ToVec2(Path->pts[0], Path->pts[1], bFlipX, bFlipY, SvgWidth, SvgHeight) * Scale;
 		OutLoop.Add(Start);
 
 		for (int32 I = 0; I < Path->npts - 1; I += 3)
 		{
 			const float* P = &Path->pts[I * 2];
-			const FVector2D P0 = ToVec2(P[0], P[1], bFlipY, SvgHeight) * Scale;
-			const FVector2D P1 = ToVec2(P[2], P[3], bFlipY, SvgHeight) * Scale;
-			const FVector2D P2 = ToVec2(P[4], P[5], bFlipY, SvgHeight) * Scale;
-			const FVector2D P3 = ToVec2(P[6], P[7], bFlipY, SvgHeight) * Scale;
+			const FVector2D P0 = ToVec2(P[0], P[1], bFlipX, bFlipY, SvgWidth, SvgHeight) * Scale;
+			const FVector2D P1 = ToVec2(P[2], P[3], bFlipX, bFlipY, SvgWidth, SvgHeight) * Scale;
+			const FVector2D P2 = ToVec2(P[4], P[5], bFlipX, bFlipY, SvgWidth, SvgHeight) * Scale;
+			const FVector2D P3 = ToVec2(P[6], P[7], bFlipX, bFlipY, SvgWidth, SvgHeight) * Scale;
 			FlattenCubic(P0, P1, P2, P3, Settings.CurveTolerance, OutLoop);
 		}
 
@@ -377,7 +380,7 @@ bool FSvgParser::Parse(const FString& SvgContent, FSvgMeshSettings& Settings, TA
 		for (NSVGpath* Path = Shape->paths; Path != nullptr; Path = Path->next)
 		{
 			TArray<FVector2D> Loop;
-			if (!SvgParserPrivate::ExtractPathLoop(Path, Settings.bFlipY, SvgHeight, Scale, Settings, Loop))
+			if (!SvgParserPrivate::ExtractPathLoop(Path, Settings.bFlipX, Settings.bFlipY, SvgWidth, SvgHeight, Scale, Settings, Loop))
 			{
 				continue;
 			}

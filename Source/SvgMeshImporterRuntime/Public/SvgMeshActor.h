@@ -39,7 +39,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
 	FString SvgFilePath;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
 	FSvgMeshSettings MeshSettings;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
@@ -47,14 +47,6 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
 	bool bBuildOnBeginPlay = false;
-
-	/** When false (default), meshes are not built automatically in the editor — call EditorRebuildMesh instead. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
-	bool bAutoRebuildInEditor = false;
-
-	/** When false (default), changing SVG settings in the editor does not trigger an automatic rebuild. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
-	bool bAutoRebuildOnPropertyChange = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
 	bool bCreateCollision = true;
@@ -70,8 +62,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "SVG")
 	bool RebuildMesh();
 
-	/** Build or rebuild meshes from the editor Details panel button, Blueprints, or editor utility widgets. */
-	UFUNCTION(BlueprintCallable, Category = "SVG", meta = (CallInEditor = "true"))
+	/** Build meshes from the editor Details panel Generate Mesh button, Blueprints, or editor utility widgets. */
+	UFUNCTION(BlueprintCallable, Category = "SVG", meta = (CallInEditor = "true", DisplayName = "Generate Mesh"))
 	void EditorRebuildMesh();
 
 	/** Remove all generated shape components without rebuilding (fixes stale/duplicate meshes). */

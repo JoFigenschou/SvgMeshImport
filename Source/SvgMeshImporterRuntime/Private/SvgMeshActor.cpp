@@ -71,7 +71,7 @@ void ASvgMeshActor::PostLoad()
 	if (bHasStaleGeneratedMeshes)
 	{
 		UE_LOG(LogSvgMeshImporter, Warning,
-			TEXT("[SvgMeshActor] '%s' purging %d stale generated shape component(s) (saved count=%d). Use Editor Rebuild Mesh to regenerate."),
+			TEXT("[SvgMeshActor] '%s' purging %d stale generated shape component(s) (saved count=%d). Use Generate Mesh to regenerate."),
 			*GetName(),
 			GeneratedComponentCount,
 			BuiltShapeMeshCount);
@@ -89,21 +89,6 @@ void ASvgMeshActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChange
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(ASvgMeshActor, MeshMaterial))
 	{
 		ApplyMeshMaterial();
-		return;
-	}
-
-	const bool bMeshSettingsChanged = PropertyChangedEvent.MemberProperty
-		&& PropertyChangedEvent.MemberProperty->GetFName() == GET_MEMBER_NAME_CHECKED(ASvgMeshActor, MeshSettings);
-	const bool bShouldRebuild = PropertyName == GET_MEMBER_NAME_CHECKED(ASvgMeshActor, SvgFilePath)
-		|| PropertyName == GET_MEMBER_NAME_CHECKED(ASvgMeshActor, MeshSettings)
-		|| PropertyName == GET_MEMBER_NAME_CHECKED(ASvgMeshActor, bCreateCollision)
-		|| PropertyName == GET_MEMBER_NAME_CHECKED(ASvgMeshActor, bBakeToStaticMeshes)
-		|| PropertyName == GET_MEMBER_NAME_CHECKED(ASvgMeshActor, StaticMeshOutputPath)
-		|| bMeshSettingsChanged;
-
-	if (bAutoRebuildOnPropertyChange && bShouldRebuild && !SvgFilePath.IsEmpty())
-	{
-		RebuildMesh();
 	}
 }
 #endif
@@ -426,15 +411,14 @@ bool ASvgMeshActor::RebuildMesh()
 	ResetGeneratedMeshState();
 
 	UE_LOG(LogSvgMeshImporter, Log,
-		TEXT("[SvgMeshActor] '%s' RebuildMesh (manual-rebuild-v3) SvgFilePath='%s' autoEditor=%s autoProperty=%s UnionShapes=%s ExtrudeDepth=%.3f ExtrudeDir=%s Scale=%.3f FlipY=%s Collision=%s"),
+		TEXT("[SvgMeshActor] '%s' RebuildMesh SvgFilePath='%s' UnionShapes=%s ExtrudeDepth=%.3f ExtrudeDir=%s Scale=%.3f FlipX=%s FlipY=%s Collision=%s"),
 		*GetName(),
 		*SvgFilePath,
-		bAutoRebuildInEditor ? TEXT("true") : TEXT("false"),
-		bAutoRebuildOnPropertyChange ? TEXT("true") : TEXT("false"),
 		MeshSettings.bUnionShapes ? TEXT("true") : TEXT("false"),
 		MeshSettings.ExtrudeDepth,
 		MeshSettings.bExtrudeAlongPositiveZ ? TEXT("+Z") : TEXT("-Z"),
 		MeshSettings.SvgScale,
+		MeshSettings.bFlipX ? TEXT("true") : TEXT("false"),
 		MeshSettings.bFlipY ? TEXT("true") : TEXT("false"),
 		bCreateCollision ? TEXT("true") : TEXT("false"));
 
