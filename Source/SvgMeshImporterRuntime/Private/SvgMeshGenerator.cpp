@@ -166,9 +166,12 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 
 	const FBox2D Bounds = SvgMeshGeneratorPrivate::ComputeBounds(Shapes);
 	FSvgMeshData Combined;
+	TArray<FSvgShapeMesh> ShapeMeshes;
+	ShapeMeshes.Reserve(Shapes.Num());
 
-	for (FSvgImportedShape& Shape : Shapes)
+	for (int32 ShapeIndex = 0; ShapeIndex < Shapes.Num(); ++ShapeIndex)
 	{
+		FSvgImportedShape& Shape = Shapes[ShapeIndex];
 		FSvgTessellatedCap Cap;
 		FString TessError;
 		if (!FSvgTessellator::TessellateShape(Shape, Settings, Cap, TessError))
@@ -176,7 +179,8 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 			Shape.Diagnostics.bSuccess = false;
 			Shape.Diagnostics.Message = TessError;
 			UE_LOG(LogSvgMeshImporter, Warning,
-				TEXT("[SvgMeshGenerator] Tessellation failed: %s"),
+				TEXT("[SvgMeshGenerator] Tessellation failed for shape %d: %s"),
+				ShapeIndex,
 				*TessError);
 			continue;
 		}
@@ -187,6 +191,12 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 		Shape.Diagnostics.bSuccess = true;
 		Shape.Diagnostics.TriangleCount = Part.Triangles.Num() / 3;
 		Shape.Diagnostics.Message = TEXT("Mesh built");
+
+		FSvgShapeMesh ShapeMesh;
+		ShapeMesh.ShapeIndex = ShapeIndex;
+		ShapeMesh.MeshData = Part;
+		ShapeMesh.Shape = Shape;
+		ShapeMeshes.Add(MoveTemp(ShapeMesh));
 
 		SvgMeshGeneratorPrivate::AppendMesh(Combined, Part);
 	}
@@ -203,11 +213,12 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 	}
 
 	Result.bSuccess = true;
+	Result.ShapeMeshes = MoveTemp(ShapeMeshes);
 	Result.MeshData = MoveTemp(Combined);
 	Result.Shapes = Shapes;
 	Result.Diagnostics.bSuccess = true;
 	Result.Diagnostics.TriangleCount = Result.MeshData.Triangles.Num() / 3;
-	Result.Diagnostics.Message = FString::Printf(TEXT("Built from %s"), *SourceLabel);
+	Result.Diagnostics.Message = FString::Printf(TEXT("Built %d shape mesh(es) from %s"), Result.ShapeMeshes.Num(), *SourceLabel);
 
 	FBox MeshBounds(ForceInit);
 	for (const FVector& V : Result.MeshData.Vertices)
@@ -215,8 +226,9 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 		MeshBounds += V;
 	}
 	UE_LOG(LogSvgMeshImporter, Log,
-		TEXT("[SvgMeshGenerator] Built '%s' verts=%d tris=%d boundsMin=%s boundsMax=%s"),
+		TEXT("[SvgMeshGenerator] Built '%s' shapeMeshes=%d verts=%d tris=%d boundsMin=%s boundsMax=%s"),
 		*SourceLabel,
+		Result.ShapeMeshes.Num(),
 		Result.MeshData.Vertices.Num(),
 		Result.Diagnostics.TriangleCount,
 		*MeshBounds.Min.ToString(),
@@ -231,8 +243,15 @@ bool USvgMeshGenerator::BuildFromSvgFileToMesh(const FString& FilePath, const FS
 	{
 		return false;
 	}
-	FSvgProceduralMeshBuilder::ClearMesh(TargetMesh);
-	FSvgProceduralMeshBuilder::ApplyMeshData(TargetMesh, Result.MeshData, bCreateCollision);
+	if (!Result.ShapeMeshes.IsEmpty())
+	{
+		FSvgProceduralMeshBuilder::ApplyShapeMeshes(TargetMesh, Result.ShapeMeshes, bCreateCollision);
+	}
+	else
+	{
+		FSvgProceduralMeshBuilder::ClearMesh(TargetMesh);
+		FSvgProceduralMeshBuilder::ApplyMeshData(TargetMesh, Result.MeshData, bCreateCollision);
+	}
 	return true;
 }
 
@@ -243,7 +262,14 @@ bool USvgMeshGenerator::BuildFromSvgStringToMesh(const FString& SvgContent, cons
 	{
 		return false;
 	}
-	FSvgProceduralMeshBuilder::ClearMesh(TargetMesh);
-	FSvgProceduralMeshBuilder::ApplyMeshData(TargetMesh, Result.MeshData, bCreateCollision);
+	if (!Result.ShapeMeshes.IsEmpty())
+	{
+		FSvgProceduralMeshBuilder::ApplyShapeMeshes(TargetMesh, Result.ShapeMeshes, bCreateCollision);
+	}
+	else
+	{
+		FSvgProceduralMeshBuilder::ClearMesh(TargetMesh);
+		FSvgProceduralMeshBuilder::ApplyMeshData(TargetMesh, Result.MeshData, bCreateCollision);
+	}
 	return true;
 }

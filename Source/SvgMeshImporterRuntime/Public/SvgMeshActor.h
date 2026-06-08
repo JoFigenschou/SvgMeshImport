@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "SvgMeshSettings.h"
+#include "SvgMeshTypes.h"
 #include "SvgMeshActor.generated.h"
 
 class UProceduralMeshComponent;
@@ -42,6 +43,16 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "SVG")
 	bool RebuildMesh();
+
+	/** One mesh per parsed SVG shape (e.g. per US state). */
+	UPROPERTY(BlueprintReadOnly, Category = "SVG")
+	TArray<FSvgShapeMesh> ShapeMeshes;
+
+	UFUNCTION(BlueprintPure, Category = "SVG")
+	int32 GetShapeMeshCount() const { return ShapeMeshes.Num(); }
+
+	UFUNCTION(BlueprintPure, Category = "SVG")
+	bool GetShapeMesh(int32 ShapeIndex, FSvgShapeMesh& OutShapeMesh) const;
 
 	UPROPERTY(BlueprintReadOnly, Category = "SVG")
 	FString LastBuildError;

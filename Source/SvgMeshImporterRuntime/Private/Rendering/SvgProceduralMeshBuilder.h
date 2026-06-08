@@ -9,5 +9,6 @@ class FSvgProceduralMeshBuilder
 {
 public:
 	static void ApplyMeshData(UProceduralMeshComponent* Target, const FSvgMeshData& MeshData, bool bCreateCollision, int32 SectionIndex = 0);
+	static void ApplyShapeMeshes(UProceduralMeshComponent* Target, const TArray<FSvgShapeMesh>& ShapeMeshes, bool bCreateCollision);
 	static void ClearMesh(UProceduralMeshComponent* Target);
 };

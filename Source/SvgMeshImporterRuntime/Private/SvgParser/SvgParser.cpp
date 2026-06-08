@@ -126,6 +126,119 @@ namespace SvgParserPrivate
 		}
 		return Out;
 	}
+
+	static bool IsPointInPolygon(const FVector2D& Point, const TArray<FVector2D>& Poly)
+	{
+		if (Poly.Num() < 3)
+		{
+			return false;
+		}
+
+		bool bInside = false;
+		for (int32 I = 0, J = Poly.Num() - 1; I < Poly.Num(); J = I++)
+		{
+			const FVector2D& A = Poly[I];
+			const FVector2D& B = Poly[J];
+			const bool bIntersect = ((A.Y > Point.Y) != (B.Y > Point.Y))
+				&& (Point.X < (B.X - A.X) * (Point.Y - A.Y) / FMath::Max(B.Y - A.Y, KINDA_SMALL_NUMBER) + A.X);
+			if (bIntersect)
+			{
+				bInside = !bInside;
+			}
+		}
+		return bInside;
+	}
+
+	static bool BuildShapesFromSeparatePaths(const TArray<TArray<FVector2D>>& RawLoops, const FSvgMeshSettings& Settings, TArray<FSvgImportedShape>& OutShapes)
+	{
+		TArray<int32> LoopOrder;
+		LoopOrder.Reserve(RawLoops.Num());
+		for (int32 I = 0; I < RawLoops.Num(); ++I)
+		{
+			LoopOrder.Add(I);
+		}
+		LoopOrder.Sort([&RawLoops](int32 A, int32 B)
+		{
+			return FMath::Abs(FSvgPolygonCleanup::ComputeArea(RawLoops[A])) > FMath::Abs(FSvgPolygonCleanup::ComputeArea(RawLoops[B]));
+		});
+
+		TArray<bool> Consumed;
+		Consumed.Init(false, RawLoops.Num());
+		int32 DroppedSmallShapes = 0;
+
+		for (const int32 OuterIdx : LoopOrder)
+		{
+			if (Consumed[OuterIdx] || RawLoops[OuterIdx].Num() < 3)
+			{
+				continue;
+			}
+
+			TArray<FVector2D> Outer = RawLoops[OuterIdx];
+			FSvgPolygonCleanup::CleanRing(Outer, Settings);
+			if (Outer.Num() < 3)
+			{
+				++DroppedSmallShapes;
+				continue;
+			}
+
+			if (Settings.MinShapeArea > KINDA_SMALL_NUMBER
+				&& FMath::Abs(FSvgPolygonCleanup::ComputeArea(Outer)) < Settings.MinShapeArea)
+			{
+				++DroppedSmallShapes;
+				continue;
+			}
+
+			FSvgImportedShape Imported;
+			Imported.Outer = Outer;
+			const double OuterArea = FMath::Abs(FSvgPolygonCleanup::ComputeArea(Outer));
+
+			for (int32 HoleIdx = 0; HoleIdx < RawLoops.Num(); ++HoleIdx)
+			{
+				if (HoleIdx == OuterIdx || Consumed[HoleIdx] || RawLoops[HoleIdx].Num() < 3)
+				{
+					continue;
+				}
+
+				const TArray<FVector2D>& CandidateHole = RawLoops[HoleIdx];
+				if (!IsPointInPolygon(CandidateHole[0], Outer))
+				{
+					continue;
+				}
+
+				const double HoleArea = FMath::Abs(FSvgPolygonCleanup::ComputeArea(CandidateHole));
+				if (HoleArea >= OuterArea * 0.98)
+				{
+					continue;
+				}
+
+				TArray<FVector2D> Hole = CandidateHole;
+				FSvgPolygonCleanup::CleanRing(Hole, Settings);
+				if (Hole.Num() >= 3)
+				{
+					FSvgShapeHole HoleContour;
+					HoleContour.Points = MoveTemp(Hole);
+					Imported.Holes.Add(MoveTemp(HoleContour));
+					Consumed[HoleIdx] = true;
+				}
+			}
+
+			Imported.Diagnostics.bSuccess = true;
+			Imported.Diagnostics.OuterPointCount = Imported.Outer.Num();
+			Imported.Diagnostics.HoleCount = Imported.Holes.Num();
+			Imported.Diagnostics.Message = TEXT("Parsed separate path");
+			OutShapes.Add(MoveTemp(Imported));
+			Consumed[OuterIdx] = true;
+		}
+
+		if (DroppedSmallShapes > 0)
+		{
+			UE_LOG(LogSvgMeshImporter, Log,
+				TEXT("[SvgParser] Dropped %d small separate path(s)."),
+				DroppedSmallShapes);
+		}
+
+		return !OutShapes.IsEmpty();
+	}
 }
 
 bool FSvgParser::Parse(const FString& SvgContent, const FSvgMeshSettings& Settings, TArray<FSvgImportedShape>& OutShapes, FString& OutError)
@@ -190,6 +303,20 @@ bool FSvgParser::Parse(const FString& SvgContent, const FSvgMeshSettings& Settin
 	{
 		OutError = TEXT("No filled paths found in SVG.");
 		return false;
+	}
+
+	if (!Settings.bUnionShapes)
+	{
+		if (!SvgParserPrivate::BuildShapesFromSeparatePaths(RawLoops, Settings, OutShapes))
+		{
+			OutError = TEXT("No usable separate SVG paths found.");
+			return false;
+		}
+
+		UE_LOG(LogSvgMeshImporter, Log,
+			TEXT("[SvgParser] Parsed %d separate path shape(s) (union disabled)."),
+			OutShapes.Num());
+		return true;
 	}
 
 	Clipper2Lib::FillRule FillRule = (Settings.WindingRule == ESvgWindingRule::EvenOdd)

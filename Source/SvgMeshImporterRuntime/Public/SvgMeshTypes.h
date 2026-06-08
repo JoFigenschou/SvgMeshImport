@@ -49,6 +49,21 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshData
 };
 
 USTRUCT(BlueprintType)
+struct SVGMESHIMPORTERRUNTIME_API FSvgShapeMesh
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Shape Mesh")
+	int32 ShapeIndex = INDEX_NONE;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Shape Mesh")
+	FSvgMeshData MeshData;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Shape Mesh")
+	FSvgImportedShape Shape;
+};
+
+USTRUCT(BlueprintType)
 struct SVGMESHIMPORTERRUNTIME_API FSvgMeshBuildResult
 {
 	GENERATED_BODY()
@@ -59,6 +74,11 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshBuildResult
 	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	FString ErrorMessage;
 
+	/** One entry per parsed shape; primary access for multi-shape SVGs. */
+	UPROPERTY(BlueprintReadOnly, Category = "Result")
+	TArray<FSvgShapeMesh> ShapeMeshes;
+
+	/** All shape meshes combined into a single buffer (legacy / convenience). */
 	UPROPERTY(BlueprintReadOnly, Category = "Result")
 	FSvgMeshData MeshData;
 

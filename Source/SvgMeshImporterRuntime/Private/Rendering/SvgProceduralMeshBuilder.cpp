@@ -78,3 +78,31 @@ void FSvgProceduralMeshBuilder::ApplyMeshData(UProceduralMeshComponent* Target, 
 		*MeshBounds.Max.ToString(),
 		Target->GetMaterial(SectionIndex) ? *Target->GetMaterial(SectionIndex)->GetName() : TEXT("NONE"));
 }
+
+void FSvgProceduralMeshBuilder::ApplyShapeMeshes(UProceduralMeshComponent* Target, const TArray<FSvgShapeMesh>& ShapeMeshes, bool bCreateCollision)
+{
+	if (!Target)
+	{
+		return;
+	}
+
+	ClearMesh(Target);
+
+	int32 AppliedSections = 0;
+	for (int32 ShapeIdx = 0; ShapeIdx < ShapeMeshes.Num(); ++ShapeIdx)
+	{
+		const FSvgShapeMesh& ShapeMesh = ShapeMeshes[ShapeIdx];
+		if (ShapeMesh.MeshData.Vertices.IsEmpty() || ShapeMesh.MeshData.Triangles.Num() < 3)
+		{
+			continue;
+		}
+
+		ApplyMeshData(Target, ShapeMesh.MeshData, bCreateCollision, AppliedSections);
+		++AppliedSections;
+	}
+
+	UE_LOG(LogSvgMeshImporter, Log,
+		TEXT("[ProceduralMeshBuilder] '%s' applied %d shape mesh section(s)."),
+		*Target->GetName(),
+		AppliedSections);
+}

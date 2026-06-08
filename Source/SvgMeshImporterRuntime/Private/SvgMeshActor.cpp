@@ -39,7 +39,11 @@ void ASvgMeshActor::ApplyMeshMaterial()
 		return;
 	}
 
-	ProceduralMesh->SetMaterial(0, MeshMaterial);
+	const int32 NumSections = ProceduralMesh->GetNumSections();
+	for (int32 SectionIndex = 0; SectionIndex < NumSections; ++SectionIndex)
+	{
+		ProceduralMesh->SetMaterial(SectionIndex, MeshMaterial);
+	}
 
 	if (MeshMaterial->IsTwoSided())
 	{
@@ -50,9 +54,21 @@ void ASvgMeshActor::ApplyMeshMaterial()
 	}
 
 	UE_LOG(LogSvgMeshImporter, Log,
-		TEXT("[SvgMeshActor] '%s' applied material '%s' to section 0."),
+		TEXT("[SvgMeshActor] '%s' applied material '%s' to %d section(s)."),
 		*GetName(),
-		*MeshMaterial->GetName());
+		*MeshMaterial->GetName(),
+		NumSections);
+}
+
+bool ASvgMeshActor::GetShapeMesh(int32 ShapeIndex, FSvgShapeMesh& OutShapeMesh) const
+{
+	if (!ShapeMeshes.IsValidIndex(ShapeIndex))
+	{
+		return false;
+	}
+
+	OutShapeMesh = ShapeMeshes[ShapeIndex];
+	return true;
 }
 
 void ASvgMeshActor::BeginPlay()
@@ -124,6 +140,7 @@ bool ASvgMeshActor::RebuildMesh()
 	if (!Result.bSuccess)
 	{
 		LastBuildError = Result.ErrorMessage;
+		ShapeMeshes.Reset();
 		FSvgProceduralMeshBuilder::ClearMesh(ProceduralMesh);
 		UE_LOG(LogSvgMeshImporter, Error,
 			TEXT("[SvgMeshActor] '%s' build failed: %s"),
@@ -132,13 +149,23 @@ bool ASvgMeshActor::RebuildMesh()
 		return false;
 	}
 
-	FSvgProceduralMeshBuilder::ApplyMeshData(ProceduralMesh, Result.MeshData, bCreateCollision);
+	ShapeMeshes = Result.ShapeMeshes;
+	if (!Result.ShapeMeshes.IsEmpty())
+	{
+		FSvgProceduralMeshBuilder::ApplyShapeMeshes(ProceduralMesh, Result.ShapeMeshes, bCreateCollision);
+	}
+	else
+	{
+		FSvgProceduralMeshBuilder::ClearMesh(ProceduralMesh);
+		FSvgProceduralMeshBuilder::ApplyMeshData(ProceduralMesh, Result.MeshData, bCreateCollision);
+	}
 	ApplyMeshMaterial();
 
 	const FBox SphereBounds = ProceduralMesh->Bounds.GetBox();
 	UE_LOG(LogSvgMeshImporter, Log,
-		TEXT("[SvgMeshActor] '%s' mesh applied verts=%d tris=%d boundsMin=%s boundsMax=%s actorLoc=%s"),
+		TEXT("[SvgMeshActor] '%s' mesh applied shapeMeshes=%d verts=%d tris=%d boundsMin=%s boundsMax=%s actorLoc=%s"),
 		*GetName(),
+		ShapeMeshes.Num(),
 		Result.MeshData.Vertices.Num(),
 		Result.MeshData.Triangles.Num() / 3,
 		*SphereBounds.Min.ToString(),

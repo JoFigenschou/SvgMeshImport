@@ -54,4 +54,8 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshSettings
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
 	ESvgWindingRule WindingRule = ESvgWindingRule::NonZero;
+
+	/** When false, each SVG path becomes its own shape/mesh (e.g. one mesh per US state). When true, paths are unioned first. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
+	bool bUnionShapes = false;
 };
