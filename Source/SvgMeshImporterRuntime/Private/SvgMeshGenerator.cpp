@@ -2,8 +2,6 @@
 
 #include "SvgParser/SvgParser.h"
 #include "SvgTessellation/SvgTessellator.h"
-#include "MeshOps/SvgExtruder.h"
-#include "MeshOps/SvgChamfer.h"
 #include "MeshOps/SvgUvGenerator.h"
 #include "SvgMeshImporterLog.h"
 
@@ -108,6 +106,35 @@ namespace SvgMeshGeneratorPrivate
 			Acc.Triangles.Add(Tri + Base);
 		}
 	}
+
+	static void EnsurePositiveZNormals(FSvgMeshData& Mesh)
+	{
+		for (int32 T = 0; T < Mesh.Triangles.Num(); T += 3)
+		{
+			const int32 I0 = Mesh.Triangles[T];
+			const int32 I1 = Mesh.Triangles[T + 1];
+			const int32 I2 = Mesh.Triangles[T + 2];
+			const FVector& A = Mesh.Vertices[I0];
+			const FVector& B = Mesh.Vertices[I1];
+			const FVector& C = Mesh.Vertices[I2];
+			if (FVector::CrossProduct(B - A, C - A).Z < 0.f)
+			{
+				Swap(Mesh.Triangles[T + 1], Mesh.Triangles[T + 2]);
+			}
+		}
+
+		Mesh.Normals.Init(FVector::UpVector, Mesh.Vertices.Num());
+	}
+
+	static FSvgMeshData BuildFlatCapMesh(const FSvgTessellatedCap& Cap)
+	{
+		FSvgMeshData Mesh;
+		Mesh.Vertices = Cap.Vertices;
+		Mesh.Triangles = Cap.Triangles;
+		Mesh.UV0 = Cap.UV0;
+		EnsurePositiveZNormals(Mesh);
+		return Mesh;
+	}
 }
 
 FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgFile(const FString& FilePath, const FSvgMeshSettings& Settings)
@@ -171,9 +198,7 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 			continue;
 		}
 
-		FSvgMeshData Part;
-		FSvgExtruder::Extrude(Cap, Settings.ExtrudeDepth, Part, Settings.MinEdgeLength, Settings.bExtrudeAlongPositiveZ);
-		FSvgChamfer::ApplyChamfer(Part, Settings);
+		FSvgMeshData Part = SvgMeshGeneratorPrivate::BuildFlatCapMesh(Cap);
 		FSvgUvGenerator::GenerateUVs(Part, Settings, Bounds);
 
 		Shape.Diagnostics.bSuccess = true;
