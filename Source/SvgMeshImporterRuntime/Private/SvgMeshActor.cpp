@@ -40,6 +40,15 @@ void ASvgMeshActor::ApplyMeshMaterial()
 	}
 
 	ProceduralMesh->SetMaterial(0, MeshMaterial);
+
+	if (MeshMaterial->IsTwoSided())
+	{
+		UE_LOG(LogSvgMeshImporter, Warning,
+			TEXT("[SvgMeshActor] '%s' material '%s' is two-sided. Disable Two Sided on the material for correct single-sided lighting with +Z component-local normals."),
+			*GetName(),
+			*MeshMaterial->GetName());
+	}
+
 	UE_LOG(LogSvgMeshImporter, Log,
 		TEXT("[SvgMeshActor] '%s' applied material '%s' to section 0."),
 		*GetName(),

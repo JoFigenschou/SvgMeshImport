@@ -1,5 +1,6 @@
 ﻿#include "Rendering/SvgProceduralMeshBuilder.h"
 
+#include "MeshOps/SvgFlatCapMesh.h"
 #include "SvgMeshImporterLog.h"
 #include "ProceduralMeshComponent.h"
 
@@ -37,59 +38,41 @@ void FSvgProceduralMeshBuilder::ApplyMeshData(UProceduralMeshComponent* Target, 
 		return;
 	}
 
+	FSvgMeshData LocalMesh = MeshData;
+	FSvgFlatCapMesh::FixWindingForComponentLocalPositiveZ(LocalMesh);
+	FSvgFlatCapMesh::ApplyComponentLocalFlatBasis(LocalMesh);
+
 	TArray<FLinearColor> VertexColors;
-	VertexColors.Init(FLinearColor::White, MeshData.Vertices.Num());
+	VertexColors.Init(FLinearColor::White, LocalMesh.Vertices.Num());
 
-	TArray<FProcMeshTangent> Tangents = MeshData.Tangents;
-	if (Tangents.Num() != MeshData.Vertices.Num())
+	TArray<FVector2D> UV0 = LocalMesh.UV0;
+	if (UV0.Num() != LocalMesh.Vertices.Num())
 	{
-		Tangents.SetNum(MeshData.Vertices.Num());
-		for (int32 I = 0; I < Tangents.Num(); ++I)
-		{
-			const FVector Normal = MeshData.Normals.IsValidIndex(I) ? MeshData.Normals[I].GetSafeNormal() : FVector::UpVector;
-			FVector TangentX = FVector::CrossProduct(FVector::UpVector, Normal).GetSafeNormal();
-			if (TangentX.IsNearlyZero())
-			{
-				TangentX = FVector(1.f, 0.f, 0.f);
-			}
-			Tangents[I] = FProcMeshTangent(TangentX, false);
-		}
-	}
-
-	TArray<FVector2D> UV0 = MeshData.UV0;
-	if (UV0.Num() != MeshData.Vertices.Num())
-	{
-		UV0.Init(FVector2D::ZeroVector, MeshData.Vertices.Num());
-	}
-
-	TArray<FVector> Normals = MeshData.Normals;
-	if (Normals.Num() != MeshData.Vertices.Num())
-	{
-		Normals.Init(FVector::UpVector, MeshData.Vertices.Num());
+		UV0.Init(FVector2D::ZeroVector, LocalMesh.Vertices.Num());
 	}
 
 	Target->CreateMeshSection_LinearColor(
 		SectionIndex,
-		MeshData.Vertices,
-		MeshData.Triangles,
-		Normals,
+		LocalMesh.Vertices,
+		LocalMesh.Triangles,
+		LocalMesh.Normals,
 		UV0,
 		VertexColors,
-		Tangents,
+		LocalMesh.Tangents,
 		bCreateCollision);
 
 	FBox MeshBounds(ForceInit);
-	for (const FVector& V : MeshData.Vertices)
+	for (const FVector& V : LocalMesh.Vertices)
 	{
 		MeshBounds += V;
 	}
 
 	UE_LOG(LogSvgMeshImporter, Log,
-		TEXT("[ProceduralMeshBuilder] '%s' section=%d verts=%d tris=%d collision=%s boundsMin=%s boundsMax=%s material=%s"),
+		TEXT("[ProceduralMeshBuilder] '%s' section=%d verts=%d tris=%d collision=%s boundsMin=%s boundsMax=%s material=%s (component-local normals)"),
 		*Target->GetName(),
 		SectionIndex,
-		MeshData.Vertices.Num(),
-		MeshData.Triangles.Num() / 3,
+		LocalMesh.Vertices.Num(),
+		LocalMesh.Triangles.Num() / 3,
 		bCreateCollision ? TEXT("true") : TEXT("false"),
 		*MeshBounds.Min.ToString(),
 		*MeshBounds.Max.ToString(),

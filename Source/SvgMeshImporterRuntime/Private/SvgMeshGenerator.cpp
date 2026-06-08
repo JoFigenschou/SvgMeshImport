@@ -2,6 +2,7 @@
 
 #include "SvgParser/SvgParser.h"
 #include "SvgTessellation/SvgTessellator.h"
+#include "MeshOps/SvgFlatCapMesh.h"
 #include "MeshOps/SvgUvGenerator.h"
 #include "SvgMeshImporterLog.h"
 
@@ -107,44 +108,14 @@ namespace SvgMeshGeneratorPrivate
 		}
 	}
 
-	static void EnsurePositiveZNormals(FSvgMeshData& Mesh)
-	{
-		int32 FlippedCount = 0;
-		for (int32 T = 0; T < Mesh.Triangles.Num(); T += 3)
-		{
-			const int32 I0 = Mesh.Triangles[T];
-			const int32 I1 = Mesh.Triangles[T + 1];
-			const int32 I2 = Mesh.Triangles[T + 2];
-			const FVector& A = Mesh.Vertices[I0];
-			const FVector& B = Mesh.Vertices[I1];
-			const FVector& C = Mesh.Vertices[I2];
-			const float SignedAreaZ = FVector::CrossProduct(B - A, C - A).Z;
-			if (SignedAreaZ < 0.f)
-			{
-				Swap(Mesh.Triangles[T + 1], Mesh.Triangles[T + 2]);
-				++FlippedCount;
-			}
-		}
-
-		Mesh.Normals.Init(FVector::UpVector, Mesh.Vertices.Num());
-		Mesh.Tangents.SetNum(Mesh.Vertices.Num());
-		for (FProcMeshTangent& Tangent : Mesh.Tangents)
-		{
-			Tangent = FProcMeshTangent(FVector(1.f, 0.f, 0.f), false);
-		}
-
-		UE_LOG(LogSvgMeshImporter, Verbose,
-			TEXT("[SvgMeshGenerator] Flat cap normals -> +Z (flipped %d triangle(s))"),
-			FlippedCount);
-	}
-
 	static FSvgMeshData BuildFlatCapMesh(const FSvgTessellatedCap& Cap)
 	{
 		FSvgMeshData Mesh;
 		Mesh.Vertices = Cap.Vertices;
 		Mesh.Triangles = Cap.Triangles;
 		Mesh.UV0 = Cap.UV0;
-		EnsurePositiveZNormals(Mesh);
+		FSvgFlatCapMesh::FixWindingForComponentLocalPositiveZ(Mesh);
+		FSvgFlatCapMesh::ApplyComponentLocalFlatBasis(Mesh);
 		return Mesh;
 	}
 }
