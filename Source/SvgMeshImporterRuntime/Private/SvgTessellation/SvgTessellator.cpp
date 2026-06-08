@@ -1,5 +1,8 @@
 ﻿#include "SvgTessellation/SvgTessellator.h"
 
+#include "SvgPolygon/SvgPolygonCleanup.h"
+#include "SvgMeshSettings.h"
+
 #include <array>
 #include <vector>
 
@@ -33,7 +36,7 @@ namespace SvgTessellatorPrivate
 	}
 }
 
-bool FSvgTessellator::TessellateShape(const FSvgImportedShape& Shape, bool bFlipY, float Scale, FSvgTessellatedCap& OutCap, FString& OutError)
+bool FSvgTessellator::TessellateShape(const FSvgImportedShape& Shape, const FSvgMeshSettings& Settings, FSvgTessellatedCap& OutCap, FString& OutError)
 {
 	OutCap = FSvgTessellatedCap();
 	OutError.Reset();
@@ -50,7 +53,9 @@ bool FSvgTessellator::TessellateShape(const FSvgImportedShape& Shape, bool bFlip
 	Polygon PolygonData;
 	PolygonData.reserve(static_cast<size_t>(1 + Shape.Holes.Num()));
 
-	TArray<FVector2D> Outer = SvgTessellatorPrivate::EnsureWinding(Shape.Outer, false);
+	TArray<FVector2D> Outer = Shape.Outer;
+	FSvgPolygonCleanup::CleanRing(Outer, Settings);
+	Outer = SvgTessellatorPrivate::EnsureWinding(Outer, false);
 	std::vector<Point> OuterRing;
 	OuterRing.reserve(static_cast<size_t>(Outer.Num()));
 	for (const FVector2D& P : Outer)
@@ -65,7 +70,9 @@ bool FSvgTessellator::TessellateShape(const FSvgImportedShape& Shape, bool bFlip
 		{
 			continue;
 		}
-		TArray<FVector2D> HoleWound = SvgTessellatorPrivate::EnsureWinding(Hole.Points, true);
+		TArray<FVector2D> HoleWound = Hole.Points;
+		FSvgPolygonCleanup::CleanRing(HoleWound, Settings);
+		HoleWound = SvgTessellatorPrivate::EnsureWinding(HoleWound, true);
 		std::vector<Point> HoleRing;
 		HoleRing.reserve(static_cast<size_t>(HoleWound.Num()));
 		for (const FVector2D& P : HoleWound)
@@ -99,7 +106,9 @@ bool FSvgTessellator::TessellateShape(const FSvgImportedShape& Shape, bool bFlip
 			continue;
 		}
 		HoleOffsets.Add(All2D.Num());
-		TArray<FVector2D> HoleWound = SvgTessellatorPrivate::EnsureWinding(Hole.Points, true);
+		TArray<FVector2D> HoleWound = Hole.Points;
+		FSvgPolygonCleanup::CleanRing(HoleWound, Settings);
+		HoleWound = SvgTessellatorPrivate::EnsureWinding(HoleWound, true);
 		for (const FVector2D& P : HoleWound)
 		{
 			All2D.Add(P);

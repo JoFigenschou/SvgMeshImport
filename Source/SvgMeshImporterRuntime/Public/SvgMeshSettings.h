@@ -27,6 +27,18 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG", meta = (ClampMin = "0.01"))
 	float CurveTolerance = 0.5f;
 
+	/** Douglas-Peucker style simplification applied after union. Increase for noisy or over-dense SVG paths. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG", meta = (ClampMin = "0"))
+	float SimplifyTolerance = 2.f;
+
+	/** Drop outline segments shorter than this when cleaning paths and building extrusion walls. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG", meta = (ClampMin = "0"))
+	float MinEdgeLength = 1.f;
+
+	/** Ignore filled islands smaller than this area (square SVG units after scale). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG", meta = (ClampMin = "0"))
+	float MinShapeArea = 16.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG")
 	float SvgScale = 1.f;
 

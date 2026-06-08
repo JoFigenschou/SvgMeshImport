@@ -1,6 +1,8 @@
 ﻿#include "MeshOps/SvgExtruder.h"
 
-void FSvgExtruder::Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMeshData& InOutMesh)
+#include "SvgMeshImporterLog.h"
+
+void FSvgExtruder::Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMeshData& InOutMesh, float MinEdgeLength)
 {
 	InOutMesh = FSvgMeshData();
 
@@ -45,6 +47,8 @@ void FSvgExtruder::Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMe
 	InOutMesh.Triangles.Append(BottomTris);
 
 	const int32 SideBase = InOutMesh.Vertices.Num();
+	const float MinEdgeLengthSq = FMath::Square(FMath::Max(0.f, MinEdgeLength));
+	int32 SkippedEdges = 0;
 	for (int32 E = 0; E < TopCap.BoundaryEdges.Num(); E += 2)
 	{
 		const int32 ATop = TopCap.BoundaryEdges[E];
@@ -54,6 +58,12 @@ void FSvgExtruder::Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMe
 
 		const FVector TA = InOutMesh.Vertices[ATop];
 		const FVector TB = InOutMesh.Vertices[BTop];
+		if (MinEdgeLengthSq > 0.f && FVector::DistSquared(TA, TB) < MinEdgeLengthSq)
+		{
+			++SkippedEdges;
+			continue;
+		}
+
 		const FVector BA = InOutMesh.Vertices[ABot];
 		const FVector BB = InOutMesh.Vertices[BBot];
 		const FVector Edge = TB - TA;
@@ -80,5 +90,13 @@ void FSvgExtruder::Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMe
 		InOutMesh.Triangles.Add(V0);
 		InOutMesh.Triangles.Add(V0 + 2);
 		InOutMesh.Triangles.Add(V0 + 3);
+	}
+
+	if (SkippedEdges > 0)
+	{
+		UE_LOG(LogSvgMeshImporter, Verbose,
+			TEXT("[SvgExtruder] Skipped %d short boundary edge(s) below MinEdgeLength=%.3f"),
+			SkippedEdges,
+			MinEdgeLength);
 	}
 }

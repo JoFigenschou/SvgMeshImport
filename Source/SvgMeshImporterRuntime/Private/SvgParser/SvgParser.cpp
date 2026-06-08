@@ -1,5 +1,7 @@
 ﻿#include "SvgParser/SvgParser.h"
 
+#include "SvgPolygon/SvgPolygonCleanup.h"
+#include "SvgMeshImporterLog.h"
 #include "nanosvg.h"
 
 THIRD_PARTY_INCLUDES_START
@@ -99,8 +101,6 @@ namespace SvgParserPrivate
 		}
 		Poly = MoveTemp(Clean);
 	}
-
-	static Clipper2Lib::Path64 ToClipperPath(const TArray<FVector2D>& Poly, float Scale)
 	{
 		Clipper2Lib::Path64 Path;
 		Path.reserve(static_cast<size_t>(Poly.Num()));
@@ -123,20 +123,6 @@ namespace SvgParserPrivate
 			Out.Add(FVector2D(static_cast<float>(static_cast<double>(Pt.x) * Inv), static_cast<float>(static_cast<double>(Pt.y) * Inv)));
 		}
 		return Out;
-	}
-
-	static void CleanupPolygon(TArray<FVector2D>& Poly, float Scale)
-	{
-		if (Poly.Num() < 3)
-		{
-			return;
-		}
-		Clipper2Lib::Paths64 Paths{ ToClipperPath(Poly, Scale) };
-		Paths = Clipper2Lib::SimplifyPaths(Paths, 1.0, true);
-		if (!Paths.empty() && !Paths[0].empty())
-		{
-			Poly = FromClipperPath(Paths[0], Scale);
-		}
 	}
 }
 
@@ -188,7 +174,7 @@ bool FSvgParser::Parse(const FString& SvgContent, const FSvgMeshSettings& Settin
 			}
 
 			SvgParserPrivate::RemoveDuplicatePoints(Loop);
-			SvgParserPrivate::CleanupPolygon(Loop, ClipperScale);
+			FSvgPolygonCleanup::CleanRing(Loop, Settings);
 			if (Loop.Num() >= 3)
 			{
 				RawLoops.Add(MoveTemp(Loop));
@@ -217,6 +203,7 @@ bool FSvgParser::Parse(const FString& SvgContent, const FSvgMeshSettings& Settin
 
 	Clipper2Lib::Paths64 Solution = Clipper2Lib::Union(Subject, FillRule);
 
+	int32 DroppedSmallShapes = 0;
 	for (const Clipper2Lib::Path64& OuterPath : Solution)
 	{
 		if (OuterPath.size() < 3)
@@ -224,9 +211,29 @@ bool FSvgParser::Parse(const FString& SvgContent, const FSvgMeshSettings& Settin
 			continue;
 		}
 
+		const double AreaOuterClipper = Clipper2Lib::Area(OuterPath);
+		const double MinAreaClipper = static_cast<double>(Settings.MinShapeArea) * static_cast<double>(ClipperScale) * static_cast<double>(ClipperScale);
+		if (Settings.MinShapeArea > KINDA_SMALL_NUMBER && FMath::Abs(AreaOuterClipper) < MinAreaClipper)
+		{
+			++DroppedSmallShapes;
+			continue;
+		}
+
 		FSvgImportedShape Imported;
 		Imported.Outer = SvgParserPrivate::FromClipperPath(OuterPath, ClipperScale);
-		SvgParserPrivate::RemoveDuplicatePoints(Imported.Outer);
+		FSvgPolygonCleanup::CleanRing(Imported.Outer, Settings);
+		if (Imported.Outer.Num() < 3)
+		{
+			++DroppedSmallShapes;
+			continue;
+		}
+
+		if (Settings.MinShapeArea > KINDA_SMALL_NUMBER
+			&& FMath::Abs(FSvgPolygonCleanup::ComputeArea(Imported.Outer)) < Settings.MinShapeArea)
+		{
+			++DroppedSmallShapes;
+			continue;
+		}
 
 		Clipper2Lib::Paths64 HoleSolution = Clipper2Lib::Intersect(Subject, Clipper2Lib::Paths64{ OuterPath }, FillRule);
 		for (const Clipper2Lib::Path64& HolePath : HoleSolution)
@@ -236,13 +243,12 @@ bool FSvgParser::Parse(const FString& SvgContent, const FSvgMeshSettings& Settin
 				continue;
 			}
 			const double AreaHole = Clipper2Lib::Area(HolePath);
-			const double AreaOuter = Clipper2Lib::Area(OuterPath);
-			if (FMath::Abs(AreaHole) >= FMath::Abs(AreaOuter) * 0.98)
+			if (FMath::Abs(AreaHole) >= FMath::Abs(AreaOuterClipper) * 0.98)
 			{
 				continue;
 			}
 			TArray<FVector2D> Hole = SvgParserPrivate::FromClipperPath(HolePath, ClipperScale);
-			SvgParserPrivate::RemoveDuplicatePoints(Hole);
+			FSvgPolygonCleanup::CleanRing(Hole, Settings);
 			if (Hole.Num() >= 3)
 			{
 				FSvgShapeHole HoleContour;
@@ -251,12 +257,19 @@ bool FSvgParser::Parse(const FString& SvgContent, const FSvgMeshSettings& Settin
 			}
 		}
 
-		Imported.Diagnostics.bSuccess = Imported.Outer.Num() >= 3;
+		Imported.Diagnostics.bSuccess = true;
 		Imported.Diagnostics.OuterPointCount = Imported.Outer.Num();
 		Imported.Diagnostics.HoleCount = Imported.Holes.Num();
 		Imported.Diagnostics.Message = TEXT("Parsed shape");
 
 		OutShapes.Add(MoveTemp(Imported));
+	}
+
+	if (DroppedSmallShapes > 0)
+	{
+		UE_LOG(LogSvgMeshImporter, Log,
+			TEXT("[SvgParser] Dropped %d small or degenerate shape(s). Increase Min Shape Area or Simplify Tolerance if needed."),
+			DroppedSmallShapes);
 	}
 
 	if (OutShapes.IsEmpty())

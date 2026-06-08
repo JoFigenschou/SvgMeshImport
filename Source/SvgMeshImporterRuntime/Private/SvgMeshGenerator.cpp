@@ -161,7 +161,7 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 	{
 		FSvgTessellatedCap Cap;
 		FString TessError;
-		if (!FSvgTessellator::TessellateShape(Shape, Settings.bFlipY, Settings.SvgScale, Cap, TessError))
+		if (!FSvgTessellator::TessellateShape(Shape, Settings, Cap, TessError))
 		{
 			Shape.Diagnostics.bSuccess = false;
 			Shape.Diagnostics.Message = TessError;
@@ -172,7 +172,7 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 		}
 
 		FSvgMeshData Part;
-		FSvgExtruder::Extrude(Cap, Settings.ExtrudeDepth, Part);
+		FSvgExtruder::Extrude(Cap, Settings.ExtrudeDepth, Part, Settings.MinEdgeLength);
 		FSvgChamfer::ApplyChamfer(Part, Settings);
 		FSvgUvGenerator::GenerateUVs(Part, Settings, Bounds);
 
