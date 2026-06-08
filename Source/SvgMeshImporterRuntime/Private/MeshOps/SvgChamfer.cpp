@@ -5,9 +5,12 @@ namespace SvgChamferPrivate
 	static void AppendTriangle(FSvgMeshData& Mesh, int32 A, int32 B, int32 C, const FVector& Normal)
 	{
 		const int32 Base = Mesh.Vertices.Num();
-		Mesh.Vertices.Add(Mesh.Vertices[A]);
-		Mesh.Vertices.Add(Mesh.Vertices[B]);
-		Mesh.Vertices.Add(Mesh.Vertices[C]);
+		const FVector VA = Mesh.Vertices[A];
+		const FVector VB = Mesh.Vertices[B];
+		const FVector VC = Mesh.Vertices[C];
+		Mesh.Vertices.Add(VA);
+		Mesh.Vertices.Add(VB);
+		Mesh.Vertices.Add(VC);
 		Mesh.Normals.Add(Normal);
 		Mesh.Normals.Add(Normal);
 		Mesh.Normals.Add(Normal);

@@ -1,0 +1,20 @@
+#!/bin/sh
+# Auto-sync the Unreal project plugin folder after git push.
+
+UE_PLUGIN_DIR="S:/LocalDev/SVG_Import/Plugins/SvgMeshImporter"
+
+if [ ! -d "$UE_PLUGIN_DIR/.git" ]; then
+	echo "post-push: Unreal plugin folder not found, skipping sync."
+	exit 0
+fi
+
+echo "post-push: pulling origin/main into Unreal plugin folder..."
+git -C "$UE_PLUGIN_DIR" fetch origin main &&
+git -C "$UE_PLUGIN_DIR" pull --ff-only origin main
+
+if [ $? -eq 0 ]; then
+	echo "post-push: Unreal plugin folder synced."
+else
+	echo "post-push: sync failed. Run scripts/sync-to-unreal.ps1 manually."
+	exit 1
+fi

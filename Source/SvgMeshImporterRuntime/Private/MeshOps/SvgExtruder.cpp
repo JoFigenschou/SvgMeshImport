@@ -52,8 +52,10 @@ void FSvgExtruder::Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMe
 		const int32 ABot = ATop + BottomOffset;
 		const int32 BBot = BTop + BottomOffset;
 
-		const FVector& TA = InOutMesh.Vertices[ATop];
-		const FVector& TB = InOutMesh.Vertices[BTop];
+		const FVector TA = InOutMesh.Vertices[ATop];
+		const FVector TB = InOutMesh.Vertices[BTop];
+		const FVector BA = InOutMesh.Vertices[ABot];
+		const FVector BB = InOutMesh.Vertices[BBot];
 		const FVector Edge = TB - TA;
 		FVector SideNormal = FVector::CrossProduct(Edge, FVector::UpVector);
 		SideNormal.Z = 0.f;
@@ -65,8 +67,8 @@ void FSvgExtruder::Extrude(const FSvgTessellatedCap& TopCap, float Depth, FSvgMe
 		const int32 V0 = SideBase + (E / 2) * 4;
 		InOutMesh.Vertices.Add(TA);
 		InOutMesh.Vertices.Add(TB);
-		InOutMesh.Vertices.Add(InOutMesh.Vertices[BBot]);
-		InOutMesh.Vertices.Add(InOutMesh.Vertices[ABot]);
+		InOutMesh.Vertices.Add(BB);
+		InOutMesh.Vertices.Add(BA);
 		for (int32 N = 0; N < 4; ++N)
 		{
 			InOutMesh.Normals.Add(SideNormal);
