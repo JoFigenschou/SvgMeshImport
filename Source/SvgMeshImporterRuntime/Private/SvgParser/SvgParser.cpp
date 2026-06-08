@@ -245,7 +245,9 @@ bool FSvgParser::Parse(const FString& SvgContent, const FSvgMeshSettings& Settin
 			SvgParserPrivate::RemoveDuplicatePoints(Hole);
 			if (Hole.Num() >= 3)
 			{
-				Imported.Holes.Add(MoveTemp(Hole));
+				FSvgShapeHole HoleContour;
+				HoleContour.Points = MoveTemp(Hole);
+				Imported.Holes.Add(MoveTemp(HoleContour));
 			}
 		}
 

@@ -22,9 +22,9 @@ namespace SvgMeshGeneratorPrivate
 			{
 				Bounds += P;
 			}
-			for (const TArray<FVector2D>& Hole : Shape.Holes)
+			for (const FSvgShapeHole& Hole : Shape.Holes)
 			{
-				for (const FVector2D& P : Hole)
+				for (const FVector2D& P : Hole.Points)
 				{
 					Bounds += P;
 				}

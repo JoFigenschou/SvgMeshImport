@@ -25,6 +25,15 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshBuildDiagnostics
 };
 
 USTRUCT(BlueprintType)
+struct SVGMESHIMPORTERRUNTIME_API FSvgShapeHole
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Shape")
+	TArray<FVector2D> Points;
+};
+
+USTRUCT(BlueprintType)
 struct SVGMESHIMPORTERRUNTIME_API FSvgImportedShape
 {
 	GENERATED_BODY()
@@ -33,7 +42,7 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgImportedShape
 	TArray<FVector2D> Outer;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Shape")
-	TArray<TArray<FVector2D>> Holes;
+	TArray<FSvgShapeHole> Holes;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Shape")
 	FSvgMeshBuildDiagnostics Diagnostics;

@@ -59,13 +59,13 @@ bool FSvgTessellator::TessellateShape(const FSvgImportedShape& Shape, bool bFlip
 	}
 	PolygonData.push_back(std::move(OuterRing));
 
-	for (const TArray<FVector2D>& Hole : Shape.Holes)
+	for (const FSvgShapeHole& Hole : Shape.Holes)
 	{
-		if (Hole.Num() < 3)
+		if (Hole.Points.Num() < 3)
 		{
 			continue;
 		}
-		TArray<FVector2D> HoleWound = SvgTessellatorPrivate::EnsureWinding(Hole, true);
+		TArray<FVector2D> HoleWound = SvgTessellatorPrivate::EnsureWinding(Hole.Points, true);
 		std::vector<Point> HoleRing;
 		HoleRing.reserve(static_cast<size_t>(HoleWound.Num()));
 		for (const FVector2D& P : HoleWound)
@@ -75,7 +75,7 @@ bool FSvgTessellator::TessellateShape(const FSvgImportedShape& Shape, bool bFlip
 		PolygonData.push_back(std::move(HoleRing));
 	}
 
-	mapbox::earcut<uint32_t> Earcut;
+	mapbox::detail::Earcut<uint32_t> Earcut;
 	Earcut(PolygonData);
 	const std::vector<uint32_t>& Indices = Earcut.indices;
 
@@ -92,14 +92,14 @@ bool FSvgTessellator::TessellateShape(const FSvgImportedShape& Shape, bool bFlip
 		All2D.Add(P);
 	}
 	TArray<int32> HoleOffsets;
-	for (const TArray<FVector2D>& Hole : Shape.Holes)
+	for (const FSvgShapeHole& Hole : Shape.Holes)
 	{
-		if (Hole.Num() < 3)
+		if (Hole.Points.Num() < 3)
 		{
 			continue;
 		}
 		HoleOffsets.Add(All2D.Num());
-		TArray<FVector2D> HoleWound = SvgTessellatorPrivate::EnsureWinding(Hole, true);
+		TArray<FVector2D> HoleWound = SvgTessellatorPrivate::EnsureWinding(Hole.Points, true);
 		for (const FVector2D& P : HoleWound)
 		{
 			All2D.Add(P);
