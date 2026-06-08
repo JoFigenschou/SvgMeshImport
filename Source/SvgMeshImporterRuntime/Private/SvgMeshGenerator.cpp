@@ -5,14 +5,73 @@
 #include "MeshOps/SvgExtruder.h"
 #include "MeshOps/SvgChamfer.h"
 #include "MeshOps/SvgUvGenerator.h"
+#include "SvgMeshImporterLog.h"
 
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Rendering/SvgProceduralMeshBuilder.h"
 #include "ProceduralMeshComponent.h"
 
 namespace SvgMeshGeneratorPrivate
 {
+	static void LogSvgPathCandidates(const FString& FilePath)
+	{
+		auto LogCandidate = [](const TCHAR* Label, const FString& Candidate)
+		{
+			const bool bExists = FPaths::FileExists(Candidate);
+			UE_LOG(LogSvgMeshImporter, Log,
+				TEXT("[SvgMeshGenerator] Path probe %s: '%s' exists=%s"),
+				Label,
+				*Candidate,
+				bExists ? TEXT("yes") : TEXT("no"));
+		};
+
+		UE_LOG(LogSvgMeshImporter, Log,
+			TEXT("[SvgMeshGenerator] Resolving SVG path input='%s' ProjectDir='%s'"),
+			*FilePath,
+			*FPaths::ProjectDir());
+
+		LogCandidate(TEXT("as-is"), FilePath);
+		LogCandidate(TEXT("absolute"), FPaths::ConvertRelativePathToFull(FilePath));
+		LogCandidate(TEXT("project-relative"), FPaths::Combine(FPaths::ProjectDir(), FilePath));
+		LogCandidate(TEXT("project-content"), FPaths::Combine(FPaths::ProjectContentDir(), FilePath));
+		LogCandidate(TEXT("project-plugins"), FPaths::Combine(FPaths::ProjectPluginsDir(), FilePath));
+	}
+
+	static bool TryLoadSvgFile(const FString& FilePath, FString& OutContent, FString& OutResolvedPath)
+	{
+		const TArray<FString> Candidates = {
+			FilePath,
+			FPaths::ConvertRelativePathToFull(FilePath),
+			FPaths::Combine(FPaths::ProjectDir(), FilePath),
+			FPaths::Combine(FPaths::ProjectContentDir(), FilePath),
+			FPaths::Combine(FPaths::ProjectPluginsDir(), FilePath)
+		};
+
+		TSet<FString> Tried;
+		for (const FString& Candidate : Candidates)
+		{
+			const FString Normalized = FPaths::ConvertRelativePathToFull(Candidate);
+			if (Normalized.IsEmpty() || Tried.Contains(Normalized))
+			{
+				continue;
+			}
+			Tried.Add(Normalized);
+
+			if (FFileHelper::LoadFileToString(OutContent, *Normalized))
+			{
+				OutResolvedPath = Normalized;
+				UE_LOG(LogSvgMeshImporter, Log,
+					TEXT("[SvgMeshGenerator] Loaded SVG from '%s' (%d chars)"),
+					*OutResolvedPath,
+					OutContent.Len());
+				return true;
+			}
+		}
+
+		return false;
+	}
 	static FBox2D ComputeBounds(const TArray<FSvgImportedShape>& Shapes)
 	{
 		FBox2D Bounds(EForceInit::ForceInit);
@@ -53,15 +112,19 @@ namespace SvgMeshGeneratorPrivate
 
 FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgFile(const FString& FilePath, const FSvgMeshSettings& Settings)
 {
+	SvgMeshGeneratorPrivate::LogSvgPathCandidates(FilePath);
+
 	FString Content;
-	if (!FFileHelper::LoadFileToString(Content, *FilePath))
+	FString ResolvedPath;
+	if (!SvgMeshGeneratorPrivate::TryLoadSvgFile(FilePath, Content, ResolvedPath))
 	{
 		FSvgMeshBuildResult Result;
 		Result.bSuccess = false;
 		Result.ErrorMessage = FString::Printf(TEXT("Could not read SVG file: %s"), *FilePath);
+		UE_LOG(LogSvgMeshImporter, Error, TEXT("[SvgMeshGenerator] %s"), *Result.ErrorMessage);
 		return Result;
 	}
-	return BuildFromSvgStringInternal(Content, Settings, FilePath);
+	return BuildFromSvgStringInternal(Content, Settings, ResolvedPath);
 }
 
 FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgString(const FString& SvgContent, const FSvgMeshSettings& Settings)
@@ -79,8 +142,17 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 	{
 		Result.bSuccess = false;
 		Result.ErrorMessage = ParseError;
+		UE_LOG(LogSvgMeshImporter, Error,
+			TEXT("[SvgMeshGenerator] Parse failed for '%s': %s"),
+			*SourceLabel,
+			*ParseError);
 		return Result;
 	}
+
+	UE_LOG(LogSvgMeshImporter, Log,
+		TEXT("[SvgMeshGenerator] Parsed '%s' -> %d shape(s)"),
+		*SourceLabel,
+		Shapes.Num());
 
 	const FBox2D Bounds = SvgMeshGeneratorPrivate::ComputeBounds(Shapes);
 	FSvgMeshData Combined;
@@ -93,6 +165,9 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 		{
 			Shape.Diagnostics.bSuccess = false;
 			Shape.Diagnostics.Message = TessError;
+			UE_LOG(LogSvgMeshImporter, Warning,
+				TEXT("[SvgMeshGenerator] Tessellation failed: %s"),
+				*TessError);
 			continue;
 		}
 
@@ -113,6 +188,9 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 		Result.bSuccess = false;
 		Result.ErrorMessage = FString::Printf(TEXT("No mesh geometry produced from %s"), *SourceLabel);
 		Result.Shapes = Shapes;
+		UE_LOG(LogSvgMeshImporter, Error,
+			TEXT("[SvgMeshGenerator] %s"),
+			*Result.ErrorMessage);
 		return Result;
 	}
 
@@ -122,6 +200,19 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 	Result.Diagnostics.bSuccess = true;
 	Result.Diagnostics.TriangleCount = Result.MeshData.Triangles.Num() / 3;
 	Result.Diagnostics.Message = FString::Printf(TEXT("Built from %s"), *SourceLabel);
+
+	FBox MeshBounds(ForceInit);
+	for (const FVector& V : Result.MeshData.Vertices)
+	{
+		MeshBounds += V;
+	}
+	UE_LOG(LogSvgMeshImporter, Log,
+		TEXT("[SvgMeshGenerator] Built '%s' verts=%d tris=%d boundsMin=%s boundsMax=%s"),
+		*SourceLabel,
+		Result.MeshData.Vertices.Num(),
+		Result.Diagnostics.TriangleCount,
+		*MeshBounds.Min.ToString(),
+		*MeshBounds.Max.ToString());
 	return Result;
 }
 

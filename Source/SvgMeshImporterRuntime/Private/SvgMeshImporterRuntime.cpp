@@ -1,6 +1,9 @@
 ﻿#include "SvgMeshImporterRuntime.h"
+#include "SvgMeshImporterLog.h"
 
 #define LOCTEXT_NAMESPACE "FSvgMeshImporterRuntimeModule"
+
+DEFINE_LOG_CATEGORY(LogSvgMeshImporter);
 
 void FSvgMeshImporterRuntimeModule::StartupModule()
 {
