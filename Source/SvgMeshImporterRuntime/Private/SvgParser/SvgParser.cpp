@@ -101,6 +101,8 @@ namespace SvgParserPrivate
 		}
 		Poly = MoveTemp(Clean);
 	}
+
+	static Clipper2Lib::Path64 ToClipperPath(const TArray<FVector2D>& Poly, float Scale)
 	{
 		Clipper2Lib::Path64 Path;
 		Path.reserve(static_cast<size_t>(Poly.Num()));
