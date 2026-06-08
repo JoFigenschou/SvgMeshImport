@@ -3,9 +3,7 @@
 USvgShapeMeshComponent::USvgShapeMeshComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	SetMobility(EComponentMobility::Static);
+	SetMobility(EComponentMobility::Movable);
 	SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	SetGenerateOverlapEvents(false);
-	SetIsVisualizationComponent(true);
-	bSelectable = false;
 }

@@ -21,18 +21,150 @@
 namespace SvgMeshActorPrivate
 {
 	constexpr int32 StaleComponentThreshold = 120;
+
+	bool IsStaticMeshRenderable(const UStaticMesh* StaticMesh)
+	{
+		if (!IsValid(StaticMesh))
+		{
+			return false;
+		}
+
+		const FStaticMeshRenderData* RenderData = StaticMesh->GetRenderData();
+		return RenderData && RenderData->LODResources.Num() > 0;
+	}
+
+	void DestroyShapeComponent(UActorComponent* Component)
+	{
+		if (!Component)
+		{
+			return;
+		}
+
+		if (Component->IsRegistered())
+		{
+			Component->UnregisterComponent();
+		}
+
+		Component->Rename(
+			nullptr,
+			GetTransientPackage(),
+			REN_DontCreateRedirectors | REN_ForceNoResetLoaders | REN_NonTransactional);
+		Component->DestroyComponent();
+	}
+
+	void ReleaseComponentObjectSlot(AActor* Owner, FName SlotName)
+	{
+		if (!Owner || SlotName.IsNone())
+		{
+			return;
+		}
+
+		UObject* Existing = StaticFindObject(UObject::StaticClass(), Owner, *SlotName.ToString());
+		if (!Existing)
+		{
+			return;
+		}
+
+		if (UActorComponent* ExistingComponent = Cast<UActorComponent>(Existing))
+		{
+			DestroyShapeComponent(ExistingComponent);
+			return;
+		}
+
+		Existing->Rename(
+			nullptr,
+			GetTransientPackage(),
+			REN_DontCreateRedirectors | REN_ForceNoResetLoaders | REN_NonTransactional);
+		Existing->MarkAsGarbage();
+	}
+
+	bool IsRuntimeOrPieWorld(const UWorld* World)
+	{
+		return World && World->IsGameWorld();
+	}
+
+	EObjectFlags GetShapeComponentObjectFlags(const UWorld* World)
+	{
+		return IsRuntimeOrPieWorld(World) ? RF_Transient : RF_Transactional;
+	}
+
+	void EnsureMovableShapeHierarchy(ASvgMeshActor* Actor)
+	{
+		if (!Actor || !Actor->ProceduralMesh)
+		{
+			return;
+		}
+
+		Actor->ProceduralMesh->SetMobility(EComponentMobility::Movable);
+
+		TArray<UStaticMeshComponent*> StaticMeshComponents;
+		Actor->GetComponents(StaticMeshComponents);
+		for (UStaticMeshComponent* StaticMeshComponent : StaticMeshComponents)
+		{
+			if (!IsValid(StaticMeshComponent) || !StaticMeshComponent->GetName().StartsWith(TEXT("ShapeMesh_")))
+			{
+				continue;
+			}
+
+			StaticMeshComponent->SetMobility(EComponentMobility::Movable);
+		}
+
+		TArray<USvgShapeMeshComponent*> ProceduralShapeComponents;
+		Actor->GetComponents(ProceduralShapeComponents);
+		for (USvgShapeMeshComponent* ShapeComponent : ProceduralShapeComponents)
+		{
+			if (!IsValid(ShapeComponent) || ShapeComponent == Actor->ProceduralMesh)
+			{
+				continue;
+			}
+
+			ShapeComponent->SetMobility(EComponentMobility::Movable);
+		}
+	}
+
+	void DestroyAllShapeMeshSubobjects(AActor* Actor, UProceduralMeshComponent* RootProceduralMesh)
+	{
+		if (!Actor)
+		{
+			return;
+		}
+
+		TArray<UObject*> Subobjects;
+		GetObjectsWithOuter(Actor, Subobjects, false);
+		for (UObject* Subobject : Subobjects)
+		{
+			UActorComponent* Component = Cast<UActorComponent>(Subobject);
+			if (!Component || Component == RootProceduralMesh)
+			{
+				continue;
+			}
+
+			if (!Component->GetName().StartsWith(TEXT("ShapeMesh_")))
+			{
+				continue;
+			}
+
+			if (Component->IsA<USvgShapeMeshComponent>() || Component->IsA<UStaticMeshComponent>())
+			{
+				DestroyShapeComponent(Component);
+			}
+		}
+	}
 }
 
 ASvgMeshActor::ASvgMeshActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	ProceduralMesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("ProceduralMesh"));
+	ProceduralMesh->SetMobility(EComponentMobility::Movable);
 	SetRootComponent(ProceduralMesh);
 }
 
 void ASvgMeshActor::PostLoad()
 {
 	Super::PostLoad();
+
+	SvgMeshActorPrivate::EnsureMovableShapeHierarchy(this);
 
 #if WITH_EDITOR
 	if (!GIsEditor || IsRunningGame())
@@ -137,7 +269,8 @@ void ASvgMeshActor::ApplyMeshMaterial()
 	int32 AppliedCount = 0;
 	for (UStaticMeshComponent* StaticMeshComponent : ShapeStaticMeshComponents)
 	{
-		if (IsValid(StaticMeshComponent) && StaticMeshComponent->GetStaticMesh())
+		if (IsValid(StaticMeshComponent)
+			&& SvgMeshActorPrivate::IsStaticMeshRenderable(StaticMeshComponent->GetStaticMesh()))
 		{
 			StaticMeshComponent->SetMaterial(0, MeshMaterial);
 			++AppliedCount;
@@ -197,8 +330,7 @@ void ASvgMeshActor::DestroyAllGeneratedShapeComponents()
 			continue;
 		}
 
-		ShapeComponent->UnregisterComponent();
-		ShapeComponent->DestroyComponent();
+		SvgMeshActorPrivate::DestroyShapeComponent(ShapeComponent);
 	}
 
 	TArray<UStaticMeshComponent*> StaticMeshComponents;
@@ -210,9 +342,10 @@ void ASvgMeshActor::DestroyAllGeneratedShapeComponents()
 			continue;
 		}
 
-		StaticMeshComponent->UnregisterComponent();
-		StaticMeshComponent->DestroyComponent();
+		SvgMeshActorPrivate::DestroyShapeComponent(StaticMeshComponent);
 	}
+
+	SvgMeshActorPrivate::DestroyAllShapeMeshSubobjects(this, ProceduralMesh);
 }
 
 void ASvgMeshActor::ClearShapeMeshComponents()
@@ -226,8 +359,7 @@ void ASvgMeshActor::ClearShapeMeshComponents()
 			continue;
 		}
 
-		ShapeComponent->UnregisterComponent();
-		ShapeComponent->DestroyComponent();
+		SvgMeshActorPrivate::DestroyShapeComponent(ShapeComponent);
 	}
 
 	ShapeMeshComponents.Reset();
@@ -244,8 +376,7 @@ void ASvgMeshActor::ClearBakedStaticMeshComponents()
 			continue;
 		}
 
-		StaticMeshComponent->UnregisterComponent();
-		StaticMeshComponent->DestroyComponent();
+		SvgMeshActorPrivate::DestroyShapeComponent(StaticMeshComponent);
 	}
 
 	ShapeStaticMeshComponents.Reset();
@@ -263,21 +394,28 @@ void ASvgMeshActor::ApplyBakedStaticMeshShapes(
 		return;
 	}
 
+	SvgMeshActorPrivate::EnsureMovableShapeHierarchy(this);
 	BakedAssetsRootPath = InBakedAssetsRootPath;
 
 	for (const FSvgBakedShapeMeshEntry& Entry : Entries)
 	{
-		if (!IsValid(Entry.StaticMesh))
+		if (!SvgMeshActorPrivate::IsStaticMeshRenderable(Entry.StaticMesh))
 		{
+			UE_LOG(LogSvgMeshImporter, Warning,
+				TEXT("[SvgMeshActor] '%s' skipping baked shape '%s' because the static mesh has no render data."),
+				*GetName(),
+				*Entry.ComponentName);
 			continue;
 		}
 
 		const FName ComponentName(*Entry.ComponentName);
+		SvgMeshActorPrivate::ReleaseComponentObjectSlot(this, ComponentName);
 		UStaticMeshComponent* StaticMeshComponent = NewObject<UStaticMeshComponent>(
 			this,
 			UStaticMeshComponent::StaticClass(),
 			ComponentName,
-			RF_Transactional);
+			SvgMeshActorPrivate::GetShapeComponentObjectFlags(GetWorld()));
+		StaticMeshComponent->SetMobility(EComponentMobility::Movable);
 		StaticMeshComponent->SetupAttachment(ProceduralMesh);
 		StaticMeshComponent->SetStaticMesh(Entry.StaticMesh);
 		StaticMeshComponent->SetRelativeLocation(Entry.RelativeLocation);
@@ -299,6 +437,12 @@ bool ASvgMeshActor::TryApplyBakedStaticMeshes(const FSvgMeshBuildResult& Result)
 		return false;
 	}
 
+	const UWorld* World = GetWorld();
+	if (World && World->IsGameWorld())
+	{
+		return false;
+	}
+
 	return GSvgBakeStaticMeshesDelegate.Execute(this, Result);
 #else
 	return false;
@@ -315,6 +459,7 @@ void ASvgMeshActor::ApplyShapeMeshesAsComponents(const TArray<FSvgShapeMesh>& In
 		return;
 	}
 
+	SvgMeshActorPrivate::EnsureMovableShapeHierarchy(this);
 	FSvgProceduralMeshBuilder::ClearMesh(ProceduralMesh);
 
 	int32 CreatedCount = 0;
@@ -333,11 +478,13 @@ void ASvgMeshActor::ApplyShapeMeshesAsComponents(const TArray<FSvgShapeMesh>& In
 		}
 
 		const FName ComponentName(*FString::Printf(TEXT("ShapeMesh_%d_%s"), CreatedCount, *SafeShapeName));
+		SvgMeshActorPrivate::ReleaseComponentObjectSlot(this, ComponentName);
 		USvgShapeMeshComponent* ShapeComponent = NewObject<USvgShapeMeshComponent>(
 			this,
 			USvgShapeMeshComponent::StaticClass(),
 			ComponentName,
-			RF_Transactional);
+			SvgMeshActorPrivate::GetShapeComponentObjectFlags(GetWorld()));
+		ShapeComponent->SetMobility(EComponentMobility::Movable);
 		ShapeComponent->SetupAttachment(ProceduralMesh);
 		ShapeComponent->SetVisibility(true);
 		ShapeComponent->SetHiddenInGame(false);
@@ -392,9 +539,38 @@ void ASvgMeshActor::BeginPlay()
 
 	if (!bBuildOnBeginPlay)
 	{
-		UE_LOG(LogSvgMeshImporter, Warning,
-			TEXT("[SvgMeshActor] '%s' skipped mesh build because bBuildOnBeginPlay is false."),
-			*GetName());
+		int32 RemovedInvalidComponents = 0;
+		for (int32 ComponentIndex = ShapeStaticMeshComponents.Num() - 1; ComponentIndex >= 0; --ComponentIndex)
+		{
+			UStaticMeshComponent* StaticMeshComponent = ShapeStaticMeshComponents[ComponentIndex];
+			if (!IsValid(StaticMeshComponent)
+				|| !SvgMeshActorPrivate::IsStaticMeshRenderable(StaticMeshComponent->GetStaticMesh()))
+			{
+				SvgMeshActorPrivate::DestroyShapeComponent(StaticMeshComponent);
+				ShapeStaticMeshComponents.RemoveAt(ComponentIndex);
+				if (BakedStaticMeshes.IsValidIndex(ComponentIndex))
+				{
+					BakedStaticMeshes.RemoveAt(ComponentIndex);
+				}
+				++RemovedInvalidComponents;
+			}
+		}
+
+		BuiltShapeMeshCount = ShapeStaticMeshComponents.Num();
+
+		if (RemovedInvalidComponents > 0)
+		{
+			UE_LOG(LogSvgMeshImporter, Warning,
+				TEXT("[SvgMeshActor] '%s' removed %d invalid baked static mesh component(s) before play. Use Generate Mesh in the editor to rebuild."),
+				*GetName(),
+				RemovedInvalidComponents);
+		}
+
+		UE_LOG(LogSvgMeshImporter, Log,
+			TEXT("[SvgMeshActor] '%s' skipped mesh build because bBuildOnBeginPlay is false. staticMeshComponents=%d proceduralComponents=%d"),
+			*GetName(),
+			ShapeStaticMeshComponents.Num(),
+			ShapeMeshComponents.Num());
 		return;
 	}
 
@@ -473,6 +649,17 @@ bool ASvgMeshActor::RebuildMesh()
 		}
 		else
 		{
+			if (bBakeToStaticMeshes)
+			{
+				const UWorld* World = GetWorld();
+				if (World && World->IsGameWorld())
+				{
+					UE_LOG(LogSvgMeshImporter, Log,
+						TEXT("[SvgMeshActor] '%s' building procedural shape meshes for runtime/PIE (static mesh baking is editor-only)."),
+						*GetName());
+				}
+			}
+
 			ApplyShapeMeshesAsComponents(Result.ShapeMeshes);
 			BuiltShapeMeshCount = ShapeMeshComponents.Num();
 		}
@@ -507,7 +694,10 @@ bool ASvgMeshActor::RebuildMesh()
 	ApplyMeshMaterial();
 
 #if WITH_EDITOR
-	Modify();
+	if (!SvgMeshActorPrivate::IsRuntimeOrPieWorld(GetWorld()))
+	{
+		Modify();
+	}
 #endif
 
 	FBox CombinedBounds(ForceInit);

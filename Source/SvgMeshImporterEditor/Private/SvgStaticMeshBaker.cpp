@@ -173,6 +173,7 @@ UStaticMesh* FSvgStaticMeshBaker::CreateStaticMeshAsset(
 	}
 
 	const FPolygonGroupID PolygonGroup = MeshBuilder.AppendPolygonGroup();
+	int32 AddedTriangleCount = 0;
 	for (int32 TriangleIndex = 0; TriangleIndex < MeshData.Triangles.Num(); TriangleIndex += 3)
 	{
 		const int32 Index0 = MeshData.Triangles[TriangleIndex];
@@ -191,6 +192,15 @@ UStaticMesh* FSvgStaticMeshBaker::CreateStaticMeshAsset(
 			VertexInstances[Index1],
 			VertexInstances[Index2],
 			PolygonGroup);
+		++AddedTriangleCount;
+	}
+
+	if (AddedTriangleCount == 0)
+	{
+		UE_LOG(LogSvgMeshImporter, Warning,
+			TEXT("[SvgStaticMeshBaker] Skipping static mesh '%s' because no valid triangles were produced."),
+			*AssetName);
+		return nullptr;
 	}
 
 	StaticMesh->GetStaticMaterials().Add(FStaticMaterial());
@@ -203,6 +213,15 @@ UStaticMesh* FSvgStaticMeshBaker::CreateStaticMeshAsset(
 	MeshDescriptions.Add(&MeshDescription);
 	StaticMesh->BuildFromMeshDescriptions(MeshDescriptions, BuildParams);
 	StaticMesh->CalculateExtendedBounds();
+
+	const FStaticMeshRenderData* RenderData = StaticMesh->GetRenderData();
+	if (!RenderData || RenderData->LODResources.Num() == 0)
+	{
+		UE_LOG(LogSvgMeshImporter, Warning,
+			TEXT("[SvgStaticMeshBaker] Static mesh '%s' has no render LODs after build."),
+			*AssetName);
+		return nullptr;
+	}
 
 	return StaticMesh;
 }
