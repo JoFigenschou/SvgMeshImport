@@ -46,8 +46,12 @@ void FSvgProceduralMeshBuilder::ApplyMeshData(UProceduralMeshComponent* Target, 
 		Tangents.SetNum(MeshData.Vertices.Num());
 		for (int32 I = 0; I < Tangents.Num(); ++I)
 		{
-			const FVector Normal = MeshData.Normals.IsValidIndex(I) ? MeshData.Normals[I] : FVector::UpVector;
-			const FVector TangentX = FVector::CrossProduct(Normal, FVector::UpVector).GetSafeNormal();
+			const FVector Normal = MeshData.Normals.IsValidIndex(I) ? MeshData.Normals[I].GetSafeNormal() : FVector::UpVector;
+			FVector TangentX = FVector::CrossProduct(FVector::UpVector, Normal).GetSafeNormal();
+			if (TangentX.IsNearlyZero())
+			{
+				TangentX = FVector(1.f, 0.f, 0.f);
+			}
 			Tangents[I] = FProcMeshTangent(TangentX, false);
 		}
 	}
