@@ -12,5 +12,6 @@ public:
 		float Depth,
 		FSvgMeshData& InOutMesh,
 		float MinEdgeLength = 1.f,
-		bool bExtrudeAlongPositiveZ = true);
+		bool bExtrudeAlongPositiveZ = true,
+		bool bFlipExtrusionSides = false);
 };

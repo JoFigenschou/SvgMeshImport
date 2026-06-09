@@ -4,6 +4,27 @@
 #include "SvgMeshImporterLog.h"
 #include "ProceduralMeshComponent.h"
 
+namespace SvgProceduralMeshBuilderPrivate
+{
+	static bool UsesFlatCapBasis(const FSvgMeshData& Mesh)
+	{
+		if (Mesh.Normals.Num() != Mesh.Vertices.Num())
+		{
+			return true;
+		}
+
+		for (const FVector& Normal : Mesh.Normals)
+		{
+			if (!Normal.Equals(FVector::UpVector, KINDA_SMALL_NUMBER))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+}
+
 void FSvgProceduralMeshBuilder::ClearMesh(UProceduralMeshComponent* Target)
 {
 	if (!Target)
@@ -39,8 +60,11 @@ void FSvgProceduralMeshBuilder::ApplyMeshData(UProceduralMeshComponent* Target, 
 	}
 
 	FSvgMeshData LocalMesh = MeshData;
-	FSvgFlatCapMesh::FixWindingForComponentLocalPositiveZ(LocalMesh);
-	FSvgFlatCapMesh::ApplyComponentLocalFlatBasis(LocalMesh);
+	if (SvgProceduralMeshBuilderPrivate::UsesFlatCapBasis(LocalMesh))
+	{
+		FSvgFlatCapMesh::FixWindingForComponentLocalPositiveZ(LocalMesh);
+		FSvgFlatCapMesh::ApplyComponentLocalFlatBasis(LocalMesh);
+	}
 
 	TArray<FLinearColor> VertexColors;
 	VertexColors.Init(FLinearColor::White, LocalMesh.Vertices.Num());

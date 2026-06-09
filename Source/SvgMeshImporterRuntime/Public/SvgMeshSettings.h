@@ -15,12 +15,17 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshSettings
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
+	/** Depth in SVG units (multiplied by Svg Scale for the final mesh). Top cap stays at Z = 0. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings", meta = (ClampMin = "0"))
 	float ExtrudeDepth = 0.f;
 
-	/** When true, extrude from the SVG plane along +Z. When false, extrude along -Z. */
+	/** When true, extrude from the SVG plane along +Z. When false, extrude along -Z (top cap stays at Z = 0). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
-	bool bExtrudeAlongPositiveZ = true;
+	bool bExtrudeAlongPositiveZ = false;
+
+	/** Reverse extrusion side wall winding and normals. Enable if side faces appear inside-out. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
+	bool bFlipExtrusionSides = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
 	float ChamferDistance = 0.f;

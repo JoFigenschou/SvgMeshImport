@@ -587,12 +587,13 @@ bool ASvgMeshActor::RebuildMesh()
 	ResetGeneratedMeshState();
 
 	UE_LOG(LogSvgMeshImporter, Log,
-		TEXT("[SvgMeshActor] '%s' RebuildMesh SvgFilePath='%s' UnionShapes=%s ExtrudeDepth=%.3f ExtrudeDir=%s Scale=%.3f FlipX=%s FlipY=%s Collision=%s"),
+		TEXT("[SvgMeshActor] '%s' RebuildMesh SvgFilePath='%s' UnionShapes=%s ExtrudeDepth=%.3f ExtrudeDir=%s FlipSides=%s Scale=%.3f FlipX=%s FlipY=%s Collision=%s"),
 		*GetName(),
 		*SvgFilePath,
 		MeshSettings.bUnionShapes ? TEXT("true") : TEXT("false"),
 		MeshSettings.ExtrudeDepth,
 		MeshSettings.bExtrudeAlongPositiveZ ? TEXT("+Z") : TEXT("-Z"),
+		MeshSettings.bFlipExtrusionSides ? TEXT("true") : TEXT("false"),
 		MeshSettings.SvgScale,
 		MeshSettings.bFlipX ? TEXT("true") : TEXT("false"),
 		MeshSettings.bFlipY ? TEXT("true") : TEXT("false"),

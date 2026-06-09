@@ -60,7 +60,7 @@ Example (Blueprint):
 
 - Module: `SvgMeshImporterRuntime` (game) and `SvgMeshImporterEditor` (preview UI).
 - Exceptions are enabled for third-party headers (earcut, Clipper2).
-- Default extrusion is along -Z by **Extrude Depth** from the SVG plane (Z = 0).
+- **Extrude Depth** keeps the top cap on the SVG plane (Z = 0) and extends side walls downward (default) or upward via **b Extrude Along Positive Z**.
 
 ## License
 
