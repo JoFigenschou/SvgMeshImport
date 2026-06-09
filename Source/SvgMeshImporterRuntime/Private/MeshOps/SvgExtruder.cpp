@@ -82,6 +82,15 @@ namespace SvgExtruderPrivate
 		return SideNormal;
 	}
 
+	static FVector ComputeHoleSideNormalForMode5(
+		const FVector& Edge,
+		bool bFlipExtrusionSides)
+	{
+		// Hole rings are clockwise, but mode 5 negates all side normals uniformly.
+		// Use the CCW outward formula so the shared negate matches outer walls.
+		return ComputeOutwardSideNormal(Edge, true, bFlipExtrusionSides);
+	}
+
 	static FVector ComputeFaceNormal(
 		const TArray<FVector>& Vertices,
 		int32 I0,
@@ -124,6 +133,71 @@ namespace SvgExtruderPrivate
 		AddTriangleWithNormal(Triangles, Vertices, V0, V1, V2, SideNormal);
 		AddTriangleWithNormal(Triangles, Vertices, V0, V2, V3, SideNormal);
 	}
+
+	static void ExtrudeBoundaryEdgeList(
+		FSvgMeshData& InOutMesh,
+		const TArray<int32>& BoundaryEdges,
+		int32 BottomOffset,
+		bool bCounterClockwiseBoundary,
+		bool bFlipExtrusionSides,
+		float MinEdgeLengthSq,
+		int32 SideBase,
+		int32& SideVertexCount,
+		int32& SkippedEdges,
+		bool bMarkHoleSideVertices)
+	{
+		for (int32 E = 0; E < BoundaryEdges.Num(); E += 2)
+		{
+			const int32 ATop = BoundaryEdges[E];
+			const int32 BTop = BoundaryEdges[E + 1];
+			if (!InOutMesh.Vertices.IsValidIndex(ATop) || !InOutMesh.Vertices.IsValidIndex(BTop))
+			{
+				continue;
+			}
+
+			const FVector TA = InOutMesh.Vertices[ATop];
+			const FVector TB = InOutMesh.Vertices[BTop];
+			const FVector BA = InOutMesh.Vertices[ATop + BottomOffset];
+			const FVector BB = InOutMesh.Vertices[BTop + BottomOffset];
+			if (MinEdgeLengthSq > 0.f && FVector::DistSquared(TA, TB) < MinEdgeLengthSq)
+			{
+				++SkippedEdges;
+				continue;
+			}
+
+			const FVector Edge = TB - TA;
+			const FVector SideNormal = bMarkHoleSideVertices
+				? ComputeHoleSideNormalForMode5(Edge, bFlipExtrusionSides)
+				: ComputeOutwardSideNormal(Edge, bCounterClockwiseBoundary, bFlipExtrusionSides);
+
+			const int32 V0 = SideBase + SideVertexCount;
+			SideVertexCount += 4;
+			InOutMesh.Vertices.Add(TA);
+			InOutMesh.Vertices.Add(TB);
+			InOutMesh.Vertices.Add(BB);
+			InOutMesh.Vertices.Add(BA);
+			for (int32 N = 0; N < 4; ++N)
+			{
+				InOutMesh.Normals.Add(SideNormal);
+				InOutMesh.bIsHoleSideVertex.Add(bMarkHoleSideVertices);
+			}
+
+			const float EdgeLength = Edge.Size();
+			InOutMesh.UV0.Add(FVector2D(0.f, 0.f));
+			InOutMesh.UV0.Add(FVector2D(EdgeLength, 0.f));
+			InOutMesh.UV0.Add(FVector2D(EdgeLength, 1.f));
+			InOutMesh.UV0.Add(FVector2D(0.f, 1.f));
+
+			AddSideQuad(
+				InOutMesh.Triangles,
+				InOutMesh.Vertices,
+				V0,
+				V0 + 1,
+				V0 + 2,
+				V0 + 3,
+				SideNormal);
+		}
+	}
 }
 
 void FSvgExtruder::Extrude(
@@ -155,11 +229,13 @@ void FSvgExtruder::Extrude(
 	InOutMesh.Vertices.Reserve(TopCount * 2);
 	InOutMesh.Normals.Reserve(TopCount * 2);
 	InOutMesh.UV0.Reserve(TopCount * 2);
+	InOutMesh.bIsHoleSideVertex.Reserve(TopCount * 2);
 
 	for (const FVector& V : TopCap.Vertices)
 	{
 		InOutMesh.Vertices.Add(V);
 		InOutMesh.Normals.Add(FVector::UpVector);
+		InOutMesh.bIsHoleSideVertex.Add(false);
 	}
 
 	const FVector BottomCapNormal = bExtrudeAlongPositiveZ ? FVector::UpVector : -FVector::UpVector;
@@ -167,6 +243,7 @@ void FSvgExtruder::Extrude(
 	{
 		InOutMesh.Vertices.Add(FVector(V.X, V.Y, V.Z + BottomZOffset));
 		InOutMesh.Normals.Add(BottomCapNormal);
+		InOutMesh.bIsHoleSideVertex.Add(false);
 	}
 
 	InOutMesh.Triangles = TopCap.Triangles;
@@ -187,59 +264,39 @@ void FSvgExtruder::Extrude(
 	const float MinEdgeLengthSq = FMath::Square(FMath::Max(0.f, MinEdgeLength));
 	int32 SideVertexCount = 0;
 	int32 SkippedEdges = 0;
-	for (int32 E = 0; E < TopCap.BoundaryEdges.Num(); E += 2)
-	{
-		const int32 ATop = TopCap.BoundaryEdges[E];
-		const int32 BTop = TopCap.BoundaryEdges[E + 1];
 
-		const FVector TA = InOutMesh.Vertices[ATop];
-		const FVector TB = InOutMesh.Vertices[BTop];
-		const FVector BA = InOutMesh.Vertices[ATop + BottomOffset];
-		const FVector BB = InOutMesh.Vertices[BTop + BottomOffset];
-		if (MinEdgeLengthSq > 0.f && FVector::DistSquared(TA, TB) < MinEdgeLengthSq)
-		{
-			++SkippedEdges;
-			continue;
-		}
+	const int32 HoleEdgeCount = TopCap.HoleBoundaryEdges.Num() / 2;
 
-		const FVector Edge = TB - TA;
-		const FVector SideNormal = SvgExtruderPrivate::ComputeOutwardSideNormal(
-			Edge,
-			bCounterClockwiseBoundary,
-			bFlipExtrusionSides);
+	SvgExtruderPrivate::ExtrudeBoundaryEdgeList(
+		InOutMesh,
+		TopCap.BoundaryEdges,
+		BottomOffset,
+		bCounterClockwiseBoundary,
+		bFlipExtrusionSides,
+		MinEdgeLengthSq,
+		SideBase,
+		SideVertexCount,
+		SkippedEdges,
+		false);
 
-		const int32 V0 = SideBase + SideVertexCount;
-		SideVertexCount += 4;
-		InOutMesh.Vertices.Add(TA);
-		InOutMesh.Vertices.Add(TB);
-		InOutMesh.Vertices.Add(BB);
-		InOutMesh.Vertices.Add(BA);
-		for (int32 N = 0; N < 4; ++N)
-		{
-			InOutMesh.Normals.Add(SideNormal);
-		}
-
-		const float EdgeLength = Edge.Size();
-		InOutMesh.UV0.Add(FVector2D(0.f, 0.f));
-		InOutMesh.UV0.Add(FVector2D(EdgeLength, 0.f));
-		InOutMesh.UV0.Add(FVector2D(EdgeLength, 1.f));
-		InOutMesh.UV0.Add(FVector2D(0.f, 1.f));
-
-		SvgExtruderPrivate::AddSideQuad(
-			InOutMesh.Triangles,
-			InOutMesh.Vertices,
-			V0,
-			V0 + 1,
-			V0 + 2,
-			V0 + 3,
-			SideNormal);
-	}
+	SvgExtruderPrivate::ExtrudeBoundaryEdgeList(
+		InOutMesh,
+		TopCap.HoleBoundaryEdges,
+		BottomOffset,
+		bCounterClockwiseBoundary,
+		bFlipExtrusionSides,
+		MinEdgeLengthSq,
+		SideBase,
+		SideVertexCount,
+		SkippedEdges,
+		true);
 
 	UE_LOG(LogSvgMeshImporter, Verbose,
-		TEXT("[SvgExtruder] Extruded %s Z by %.3f flipSides=%s boundaryVerts=%d (skipped %d short edges)"),
+		TEXT("[SvgExtruder] Extruded %s Z by %.3f flipSides=%s outerBoundaryVerts=%d holeBoundaryEdges=%d (skipped %d short edges)"),
 		bExtrudeAlongPositiveZ ? TEXT("+") : TEXT("-"),
 		Depth,
 		bFlipExtrusionSides ? TEXT("true") : TEXT("false"),
 		OuterPolygon.Num(),
+		HoleEdgeCount,
 		SkippedEdges);
 }

@@ -22,9 +22,13 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgTessellatedCap
 	UPROPERTY(BlueprintReadOnly, Category = "Mesh")
 	TArray<FVector2D> UV0;
 
-	/** Pairs of vertex indices describing cap boundary segments. */
+	/** Pairs of vertex indices describing the outer cap boundary segments. */
 	UPROPERTY(BlueprintReadOnly, Category = "Mesh")
 	TArray<int32> BoundaryEdges;
+
+	/** Pairs of vertex indices describing hole perimeter segments (clockwise wound). */
+	UPROPERTY(BlueprintReadOnly, Category = "Mesh")
+	TArray<int32> HoleBoundaryEdges;
 };
 
 USTRUCT(BlueprintType)
@@ -46,6 +50,9 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshData
 
 	UPROPERTY(BlueprintReadOnly, Category = "Mesh")
 	TArray<FProcMeshTangent> Tangents;
+
+	/** Per-vertex flag for hole perimeter extrusion walls. */
+	TArray<bool> bIsHoleSideVertex;
 };
 
 USTRUCT(BlueprintType)

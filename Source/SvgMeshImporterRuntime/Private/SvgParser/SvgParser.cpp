@@ -128,6 +128,41 @@ namespace SvgParserPrivate
 		return Out;
 	}
 
+	static FVector2D ComputeLoopCentroid(const TArray<FVector2D>& Loop)
+	{
+		if (Loop.IsEmpty())
+		{
+			return FVector2D::ZeroVector;
+		}
+
+		FVector2D Sum = FVector2D::ZeroVector;
+		for (const FVector2D& Point : Loop)
+		{
+			Sum += Point;
+		}
+
+		return Sum / static_cast<float>(Loop.Num());
+	}
+
+	static bool IsLoopInsideOuter(
+		const TArray<FVector2D>& Inner,
+		const TArray<FVector2D>& Outer,
+		float ClipperScale)
+	{
+		if (Inner.Num() < 3 || Outer.Num() < 3)
+		{
+			return false;
+		}
+
+		const FVector2D Centroid = ComputeLoopCentroid(Inner);
+		const Clipper2Lib::Path64 OuterPath = ToClipperPath(Outer, ClipperScale);
+		const Clipper2Lib::Point64 TestPoint(
+			static_cast<int64>(FMath::RoundToDouble(static_cast<double>(Centroid.X) * static_cast<double>(ClipperScale))),
+			static_cast<int64>(FMath::RoundToDouble(static_cast<double>(Centroid.Y) * static_cast<double>(ClipperScale))));
+
+		return Clipper2Lib::PointInPolygon(TestPoint, OuterPath) == Clipper2Lib::PointInPolygonResult::IsInside;
+	}
+
 	static FBox2D ComputeLoopBounds(const TArray<TArray<FVector2D>>& RawLoops)
 	{
 		FBox2D Bounds(EForceInit::ForceInit);
@@ -219,12 +254,27 @@ namespace SvgParserPrivate
 
 		for (int32 PartIndex = 1; PartIndex < Parts.Num(); ++PartIndex)
 		{
-			TArray<FVector2D> ExtraOuter = Parts[PartIndex];
-			FSvgPolygonCleanup::CleanRing(ExtraOuter, Settings);
-			if (ExtraOuter.Num() >= 3)
+			TArray<FVector2D> ExtraPart = Parts[PartIndex];
+			FSvgPolygonCleanup::CleanRing(ExtraPart, Settings);
+			if (ExtraPart.Num() < 3)
+			{
+				continue;
+			}
+
+			if (Settings.bCutHoles
+				&& IsLoopInsideOuter(
+					ExtraPart,
+					Imported.Outer,
+					static_cast<float>(SVG_MESH_IMPORTER_CLIPPER_SCALE)))
+			{
+				FSvgShapeHole HoleContour;
+				HoleContour.Points = MoveTemp(ExtraPart);
+				Imported.Holes.Add(MoveTemp(HoleContour));
+			}
+			else
 			{
 				FSvgShapeOuterPart OuterPart;
-				OuterPart.Points = MoveTemp(ExtraOuter);
+				OuterPart.Points = MoveTemp(ExtraPart);
 				Imported.AdditionalOuters.Add(MoveTemp(OuterPart));
 			}
 		}
@@ -233,7 +283,11 @@ namespace SvgParserPrivate
 		Imported.Diagnostics.OuterPointCount = Imported.Outer.Num();
 		Imported.Diagnostics.HoleCount = Imported.Holes.Num();
 		Imported.Diagnostics.Message = Parts.Num() > 1
-			? FString::Printf(TEXT("Merged %d part(s) by SVG id"), Parts.Num())
+			? FString::Printf(
+				TEXT("Merged %d part(s) by SVG id (%d hole(s), %d extra outer(s))"),
+				Parts.Num(),
+				Imported.Holes.Num(),
+				Imported.AdditionalOuters.Num())
 			: TEXT("Parsed shape by SVG id");
 		OutShapes.Add(MoveTemp(Imported));
 	}
@@ -336,6 +390,90 @@ namespace SvgParserPrivate
 
 		return !OutShapes.IsEmpty();
 	}
+
+	static void AbsorbContainedShapesAsHoles(
+		TArray<FSvgImportedShape>& Shapes,
+		const FSvgMeshSettings& Settings)
+	{
+		if (!Settings.bCutHoles || Shapes.Num() < 2)
+		{
+			return;
+		}
+
+		const float ClipperScale = static_cast<float>(SVG_MESH_IMPORTER_CLIPPER_SCALE);
+		TArray<bool> bConsumed;
+		bConsumed.Init(false, Shapes.Num());
+
+		TArray<int32> Order;
+		Order.Reserve(Shapes.Num());
+		for (int32 I = 0; I < Shapes.Num(); ++I)
+		{
+			Order.Add(I);
+		}
+
+		Order.Sort([&Shapes](int32 A, int32 B)
+		{
+			return FMath::Abs(FSvgPolygonCleanup::ComputeArea(Shapes[A].Outer))
+				> FMath::Abs(FSvgPolygonCleanup::ComputeArea(Shapes[B].Outer));
+		});
+
+		for (int32 OrderIndex = Order.Num() - 1; OrderIndex >= 0; --OrderIndex)
+		{
+			const int32 Candidate = Order[OrderIndex];
+			if (bConsumed[Candidate] || Shapes[Candidate].Outer.Num() < 3)
+			{
+				continue;
+			}
+
+			const double CandidateArea = FMath::Abs(FSvgPolygonCleanup::ComputeArea(Shapes[Candidate].Outer));
+			for (int32 HostOrderIndex = 0; HostOrderIndex < Order.Num(); ++HostOrderIndex)
+			{
+				const int32 Host = Order[HostOrderIndex];
+				if (Host == Candidate || bConsumed[Host] || Shapes[Host].Outer.Num() < 3)
+				{
+					continue;
+				}
+
+				const double HostArea = FMath::Abs(FSvgPolygonCleanup::ComputeArea(Shapes[Host].Outer));
+				if (CandidateArea >= HostArea * 0.98)
+				{
+					continue;
+				}
+
+				if (!IsLoopInsideOuter(Shapes[Candidate].Outer, Shapes[Host].Outer, ClipperScale))
+				{
+					continue;
+				}
+
+				FSvgShapeHole HoleContour;
+				HoleContour.Points = Shapes[Candidate].Outer;
+				Shapes[Host].Holes.Add(MoveTemp(HoleContour));
+				Shapes[Host].Diagnostics.HoleCount = Shapes[Host].Holes.Num();
+				bConsumed[Candidate] = true;
+				break;
+			}
+		}
+
+		TArray<FSvgImportedShape> Remaining;
+		Remaining.Reserve(Shapes.Num());
+		for (int32 I = 0; I < Shapes.Num(); ++I)
+		{
+			if (!bConsumed[I])
+			{
+				Remaining.Add(MoveTemp(Shapes[I]));
+			}
+		}
+
+		const int32 AbsorbedCount = Shapes.Num() - Remaining.Num();
+		if (AbsorbedCount > 0)
+		{
+			UE_LOG(LogSvgMeshImporter, Log,
+				TEXT("[SvgParser] Absorbed %d contained shape(s) as holes."),
+				AbsorbedCount);
+		}
+
+		Shapes = MoveTemp(Remaining);
+	}
 }
 
 bool FSvgParser::Parse(const FString& SvgContent, FSvgMeshSettings& Settings, TArray<FSvgImportedShape>& OutShapes, FString& OutError)
@@ -412,10 +550,11 @@ bool FSvgParser::Parse(const FString& SvgContent, FSvgMeshSettings& Settings, TA
 	}
 
 	UE_LOG(LogSvgMeshImporter, Log,
-		TEXT("[SvgParser] Found %d filled element(s) and %d path loop(s). UnionShapes=%s"),
+		TEXT("[SvgParser] Found %d filled element(s) and %d path loop(s). UnionShapes=%s CutHoles=%s"),
 		FilledElementCount,
 		RawLoops.Num(),
-		Settings.bUnionShapes ? TEXT("true") : TEXT("false"));
+		Settings.bUnionShapes ? TEXT("true") : TEXT("false"),
+		Settings.bCutHoles ? TEXT("true") : TEXT("false"));
 
 	if (!Settings.bUnionShapes)
 	{
@@ -424,6 +563,8 @@ bool FSvgParser::Parse(const FString& SvgContent, FSvgMeshSettings& Settings, TA
 			OutError = TEXT("No usable SVG shapes found.");
 			return false;
 		}
+
+		SvgParserPrivate::AbsorbContainedShapesAsHoles(OutShapes, Settings);
 
 		UE_LOG(LogSvgMeshImporter, Log,
 			TEXT("[SvgParser] Parsed %d shape mesh(es) grouped by SVG id from %d loop(s)."),
@@ -478,25 +619,28 @@ bool FSvgParser::Parse(const FString& SvgContent, FSvgMeshSettings& Settings, TA
 			continue;
 		}
 
-		Clipper2Lib::Paths64 HoleSolution = Clipper2Lib::Intersect(Subject, Clipper2Lib::Paths64{ OuterPath }, FillRule);
-		for (const Clipper2Lib::Path64& HolePath : HoleSolution)
+		if (Settings.bCutHoles)
 		{
-			if (HolePath.size() < 3)
+			Clipper2Lib::Paths64 HoleSolution = Clipper2Lib::Intersect(Subject, Clipper2Lib::Paths64{ OuterPath }, FillRule);
+			for (const Clipper2Lib::Path64& HolePath : HoleSolution)
 			{
-				continue;
-			}
-			const double AreaHole = Clipper2Lib::Area(HolePath);
-			if (FMath::Abs(AreaHole) >= FMath::Abs(AreaOuterClipper) * 0.98)
-			{
-				continue;
-			}
-			TArray<FVector2D> Hole = SvgParserPrivate::FromClipperPath(HolePath, ClipperScale);
-			FSvgPolygonCleanup::CleanRing(Hole, Settings);
-			if (Hole.Num() >= 3)
-			{
-				FSvgShapeHole HoleContour;
-				HoleContour.Points = MoveTemp(Hole);
-				Imported.Holes.Add(MoveTemp(HoleContour));
+				if (HolePath.size() < 3)
+				{
+					continue;
+				}
+				const double AreaHole = Clipper2Lib::Area(HolePath);
+				if (FMath::Abs(AreaHole) >= FMath::Abs(AreaOuterClipper) * 0.98)
+				{
+					continue;
+				}
+				TArray<FVector2D> Hole = SvgParserPrivate::FromClipperPath(HolePath, ClipperScale);
+				FSvgPolygonCleanup::CleanRing(Hole, Settings);
+				if (Hole.Num() >= 3)
+				{
+					FSvgShapeHole HoleContour;
+					HoleContour.Points = MoveTemp(Hole);
+					Imported.Holes.Add(MoveTemp(HoleContour));
+				}
 			}
 		}
 
@@ -520,6 +664,8 @@ bool FSvgParser::Parse(const FString& SvgContent, FSvgMeshSettings& Settings, TA
 		OutError = TEXT("Union produced no usable polygons.");
 		return false;
 	}
+
+	SvgParserPrivate::AbsorbContainedShapesAsHoles(OutShapes, Settings);
 
 	return true;
 }

@@ -94,6 +94,10 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
 	bool bUnionShapes = false;
 
+	/** When true, inner contours (e.g. letter O, lakes) are cut out as holes instead of filled islands. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
+	bool bCutHoles = true;
+
 	/** Minimum filled SVG path elements before Union Shapes is auto-disabled. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings", meta = (ClampMin = "2"))
 	int32 AutoSeparatePathThreshold = 2;

@@ -69,12 +69,15 @@ namespace SvgTessellatorPrivate
 		}
 		PolygonData.push_back(std::move(OuterRing));
 
+		TArray<TArray<FVector2D>> HoleRings;
+		HoleRings.Reserve(Holes.Num());
 		for (const FSvgShapeHole& Hole : Holes)
 		{
 			if (Hole.Points.Num() < 3)
 			{
 				continue;
 			}
+
 			TArray<FVector2D> HoleWound = Hole.Points;
 			FSvgPolygonCleanup::CleanRing(HoleWound, Settings);
 			HoleWound = EnsureWinding(HoleWound, true);
@@ -85,6 +88,7 @@ namespace SvgTessellatorPrivate
 				HoleRing.push_back({ static_cast<double>(P.X), static_cast<double>(P.Y) });
 			}
 			PolygonData.push_back(std::move(HoleRing));
+			HoleRings.Add(MoveTemp(HoleWound));
 		}
 
 		mapbox::detail::Earcut<uint32_t> Earcut;
@@ -102,16 +106,9 @@ namespace SvgTessellatorPrivate
 		{
 			All2D.Add(P);
 		}
-		for (const FSvgShapeHole& Hole : Holes)
+		for (const TArray<FVector2D>& HoleRing : HoleRings)
 		{
-			if (Hole.Points.Num() < 3)
-			{
-				continue;
-			}
-			TArray<FVector2D> HoleWound = Hole.Points;
-			FSvgPolygonCleanup::CleanRing(HoleWound, Settings);
-			HoleWound = EnsureWinding(HoleWound, true);
-			for (const FVector2D& P : HoleWound)
+			for (const FVector2D& P : HoleRing)
 			{
 				All2D.Add(P);
 			}
@@ -143,6 +140,18 @@ namespace SvgTessellatorPrivate
 			const int32 Next = (I + 1) % OuterRingPoints.Num();
 			OutCap.BoundaryEdges.Add(BaseVertex + I);
 			OutCap.BoundaryEdges.Add(BaseVertex + Next);
+		}
+
+		int32 HoleVertexBase = BaseVertex + OuterRingPoints.Num();
+		for (const TArray<FVector2D>& HoleRing : HoleRings)
+		{
+			for (int32 I = 0; I < HoleRing.Num(); ++I)
+			{
+				const int32 Next = (I + 1) % HoleRing.Num();
+				OutCap.HoleBoundaryEdges.Add(HoleVertexBase + I);
+				OutCap.HoleBoundaryEdges.Add(HoleVertexBase + Next);
+			}
+			HoleVertexBase += HoleRing.Num();
 		}
 
 		return true;

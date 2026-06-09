@@ -107,10 +107,20 @@ namespace SvgMeshGeneratorPrivate
 	static void AppendMesh(FSvgMeshData& Acc, const FSvgMeshData& Part)
 	{
 		const int32 Base = Acc.Vertices.Num();
+		if (Acc.bIsHoleSideVertex.Num() < Base)
+		{
+			Acc.bIsHoleSideVertex.AddDefaulted(Base - Acc.bIsHoleSideVertex.Num());
+		}
+
 		Acc.Vertices.Append(Part.Vertices);
 		Acc.Normals.Append(Part.Normals);
 		Acc.UV0.Append(Part.UV0);
 		Acc.Tangents.Append(Part.Tangents);
+		for (int32 I = 0; I < Part.Vertices.Num(); ++I)
+		{
+			Acc.bIsHoleSideVertex.Add(
+				Part.bIsHoleSideVertex.IsValidIndex(I) && Part.bIsHoleSideVertex[I]);
+		}
 		for (int32 Tri : Part.Triangles)
 		{
 			Acc.Triangles.Add(Tri + Base);
