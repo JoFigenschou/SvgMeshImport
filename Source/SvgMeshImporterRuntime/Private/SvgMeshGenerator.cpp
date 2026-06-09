@@ -4,6 +4,7 @@
 #include "SvgTessellation/SvgTessellator.h"
 #include "MeshOps/SvgExtruder.h"
 #include "MeshOps/SvgFlatCapMesh.h"
+#include "MeshOps/SvgTangentSpace.h"
 #include "MeshOps/SvgUvGenerator.h"
 #include "SvgMeshImporterLog.h"
 
@@ -125,22 +126,6 @@ namespace SvgMeshGeneratorPrivate
 		Cap.Triangles = Temp.Triangles;
 	}
 
-	static void ComputeMeshTangents(FSvgMeshData& Mesh)
-	{
-		Mesh.Tangents.SetNum(Mesh.Vertices.Num());
-		for (int32 I = 0; I < Mesh.Vertices.Num(); ++I)
-		{
-			const FVector Normal = Mesh.Normals[I].GetSafeNormal();
-			FVector Tangent = FVector::CrossProduct(Normal, FVector::UpVector);
-			if (Tangent.IsNearlyZero())
-			{
-				Tangent = FVector::CrossProduct(Normal, FVector::ForwardVector);
-			}
-			Tangent.Normalize();
-			Mesh.Tangents[I] = FProcMeshTangent(Tangent, false);
-		}
-	}
-
 	static FSvgMeshData BuildFlatCapMesh(const FSvgTessellatedCap& Cap)
 	{
 		FSvgMeshData Mesh;
@@ -177,20 +162,19 @@ namespace SvgMeshGeneratorPrivate
 			Settings.bExtrudeAlongPositiveZ,
 			Settings.bFlipExtrusionSides);
 
-		ComputeMeshTangents(Mesh);
-
 		FBox MeshBounds(ForceInit);
 		for (const FVector& Vertex : Mesh.Vertices)
 		{
 			MeshBounds += Vertex;
 		}
 		UE_LOG(LogSvgMeshImporter, Log,
-			TEXT("[SvgMeshGenerator] Extruded cap depth=%.3f (requested=%.3f scale=%.3f dir=%s flipSides=%s) verts=%d tris=%d boundsZ=[%.3f, %.3f] boundaryEdges=%d"),
+			TEXT("[SvgMeshGenerator] Extruded cap depth=%.3f (requested=%.3f scale=%.3f dir=%s flipSides=%s tangentMode=%d) verts=%d tris=%d boundsZ=[%.3f, %.3f] boundaryEdges=%d"),
 			ExtrudeDepth,
 			Settings.ExtrudeDepth,
 			Settings.SvgScale,
 			Settings.bExtrudeAlongPositiveZ ? TEXT("+Z") : TEXT("-Z"),
 			Settings.bFlipExtrusionSides ? TEXT("true") : TEXT("false"),
+			static_cast<int32>(Settings.TangentSpaceMode),
 			Mesh.Vertices.Num(),
 			Mesh.Triangles.Num() / 3,
 			MeshBounds.Min.Z,
@@ -294,6 +278,11 @@ FSvgMeshBuildResult USvgMeshGenerator::BuildFromSvgStringInternal(const FString&
 			SvgMeshGeneratorPrivate::CenterMeshData(Part, CenterOffset);
 		}
 		FSvgUvGenerator::GenerateUVs(Part, EffectiveSettings, Bounds);
+		if (EffectiveSettings.bGenerateSmoothNormals)
+		{
+			FSvgTangentSpaceBuilder::ApplySmoothNormals(Part);
+		}
+		FSvgTangentSpaceBuilder::Apply(Part, EffectiveSettings.TangentSpaceMode);
 
 		Shape.Diagnostics.bSuccess = true;
 		Shape.Diagnostics.TriangleCount = Part.Triangles.Num() / 3;

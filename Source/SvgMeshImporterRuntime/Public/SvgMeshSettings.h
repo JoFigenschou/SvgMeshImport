@@ -10,6 +10,25 @@ enum class ESvgWindingRule : uint8
 	EvenOdd UMETA(DisplayName = "Even-Odd")
 };
 
+/** Debug/experimentation: cycle through tangent-space recipes until side-wall lighting looks correct. */
+UENUM(BlueprintType)
+enum class ESvgTangentSpaceMode : uint8
+{
+	Default UMETA(DisplayName = "0 - Up x Normal"),
+	NormalCrossUp UMETA(DisplayName = "1 - Normal x Up"),
+	UpCrossNormal_FlipY UMETA(DisplayName = "2 - Up x Normal, Flip Y"),
+	NormalCrossUp_FlipY UMETA(DisplayName = "3 - Normal x Up, Flip Y"),
+	FaceNormals UMETA(DisplayName = "4 - Smooth Face Normals + Up x Normal"),
+	NegateSideNormals UMETA(DisplayName = "5 - Negate Side Normals + Up x Normal"),
+	FromUVGradient UMETA(DisplayName = "6 - UV Gradient Tangent"),
+	UVEdgeDirection UMETA(DisplayName = "7 - UV Edge Direction"),
+	FlipSideWinding UMETA(DisplayName = "8 - Flip Side Winding + Face Normals"),
+	WorldXProjected UMETA(DisplayName = "9 - World X Projected"),
+	WorldYProjected UMETA(DisplayName = "10 - World Y Projected"),
+	ForwardCrossNormal UMETA(DisplayName = "11 - Forward x Normal"),
+	RightCrossNormal UMETA(DisplayName = "12 - Right x Normal"),
+};
+
 USTRUCT(BlueprintType)
 struct SVGMESHIMPORTERRUNTIME_API FSvgMeshSettings
 {
@@ -26,6 +45,14 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshSettings
 	/** Reverse extrusion side wall winding and normals. Enable if side faces appear inside-out. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
 	bool bFlipExtrusionSides = false;
+
+	/** Cycle through tangent-space recipes to find correct side-wall lighting. Regenerate mesh after changing. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings|Debug")
+	ESvgTangentSpaceMode TangentSpaceMode = ESvgTangentSpaceMode::NegateSideNormals;
+
+	/** When true, smooth side-wall normals only. Top/bottom caps keep flat normals. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
+	bool bGenerateSmoothNormals = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
 	float ChamferDistance = 0.f;

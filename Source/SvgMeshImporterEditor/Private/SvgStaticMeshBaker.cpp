@@ -163,7 +163,26 @@ UStaticMesh* FSvgStaticMeshBaker::CreateStaticMeshAsset(
 
 		if (bHasNormals)
 		{
-			MeshBuilder.SetInstanceNormal(InstanceId, MeshData.Normals[VertexIndex]);
+			const FVector Normal = MeshData.Normals[VertexIndex].GetSafeNormal();
+			FVector Tangent(0.f, -1.f, 0.f);
+			float BinormalSign = 1.f;
+
+			if (MeshData.Tangents.IsValidIndex(VertexIndex))
+			{
+				Tangent = MeshData.Tangents[VertexIndex].TangentX.GetSafeNormal();
+				BinormalSign = MeshData.Tangents[VertexIndex].bFlipTangentY ? -1.f : 1.f;
+			}
+			else if (FMath::Abs(Normal.Z) < 0.9f)
+			{
+				Tangent = FVector::CrossProduct(FVector::UpVector, Normal);
+				Tangent.Z = 0.f;
+				if (!Tangent.Normalize())
+				{
+					Tangent = FVector(1.f, 0.f, 0.f);
+				}
+			}
+
+			MeshBuilder.SetInstanceTangentSpace(InstanceId, Normal, Tangent, BinormalSign);
 		}
 
 		if (bHasUVs)
