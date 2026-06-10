@@ -14,6 +14,7 @@
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
 #include "Engine/StaticMesh.h"
+#include "PhysicsEngine/BodySetup.h"
 
 namespace SvgStaticMeshBakerPrivate
 {
@@ -23,6 +24,50 @@ namespace SvgStaticMeshBakerPrivate
 		{
 			Target->ClearAllMeshSections();
 		}
+	}
+
+	FBox ComputeVertexBounds(const TArray<FVector>& Vertices)
+	{
+		FBox Bounds(ForceInit);
+		for (const FVector& Vertex : Vertices)
+		{
+			Bounds += Vertex;
+		}
+		return Bounds;
+	}
+
+	void ApplySimpleBoxCollision(UStaticMesh* StaticMesh, const FBox& LocalBounds, bool bBuildCollision)
+	{
+		if (!StaticMesh || !bBuildCollision || !LocalBounds.IsValid)
+		{
+			return;
+		}
+
+		UBodySetup* BodySetup = StaticMesh->GetBodySetup();
+		if (!BodySetup)
+		{
+			StaticMesh->CreateBodySetup();
+			BodySetup = StaticMesh->GetBodySetup();
+		}
+
+		if (!BodySetup)
+		{
+			return;
+		}
+
+		BodySetup->AggGeom.BoxElems.Reset();
+		BodySetup->AggGeom.ConvexElems.Reset();
+
+		FKBoxElem BoxElem;
+		BoxElem.Center = LocalBounds.GetCenter();
+		const FVector Size = LocalBounds.GetSize();
+		BoxElem.X = FMath::Max(Size.X, KINDA_SMALL_NUMBER);
+		BoxElem.Y = FMath::Max(Size.Y, KINDA_SMALL_NUMBER);
+		BoxElem.Z = FMath::Max(Size.Z, KINDA_SMALL_NUMBER);
+		BodySetup->AggGeom.BoxElems.Add(BoxElem);
+		BodySetup->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseDefault;
+		BodySetup->InvalidatePhysicsData();
+		BodySetup->CreatePhysicsMeshes();
 	}
 
 	FString SanitizePathSegment(const FString& Name)
@@ -225,13 +270,14 @@ UStaticMesh* FSvgStaticMeshBaker::CreateStaticMeshAsset(
 	StaticMesh->GetStaticMaterials().Add(FStaticMaterial());
 
 	UStaticMesh::FBuildMeshDescriptionsParams BuildParams;
-	BuildParams.bBuildSimpleCollision = bBuildCollision;
+	BuildParams.bBuildSimpleCollision = false;
 	BuildParams.bFastBuild = true;
 
 	TArray<const FMeshDescription*> MeshDescriptions;
 	MeshDescriptions.Add(&MeshDescription);
 	StaticMesh->BuildFromMeshDescriptions(MeshDescriptions, BuildParams);
 	StaticMesh->CalculateExtendedBounds();
+	SvgStaticMeshBakerPrivate::ApplySimpleBoxCollision(StaticMesh, SvgStaticMeshBakerPrivate::ComputeVertexBounds(MeshData.Vertices), bBuildCollision);
 
 	const FStaticMeshRenderData* RenderData = StaticMesh->GetRenderData();
 	if (!RenderData || RenderData->LODResources.Num() == 0)

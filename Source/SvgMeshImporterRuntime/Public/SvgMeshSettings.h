@@ -36,7 +36,7 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshSettings
 
 	/** Depth in SVG units (multiplied by Svg Scale for the final mesh). Top cap stays at Z = 0. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings", meta = (ClampMin = "0"))
-	float ExtrudeDepth = 0.f;
+	float ExtrudeDepth = 10.f;
 
 	/** When true, extrude from the SVG plane along +Z. When false, extrude along -Z (top cap stays at Z = 0). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
@@ -44,7 +44,7 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshSettings
 
 	/** Reverse extrusion side wall winding and normals. Enable if side faces appear inside-out. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
-	bool bFlipExtrusionSides = false;
+	bool bFlipExtrusionSides = true;
 
 	/** Cycle through tangent-space recipes to find correct side-wall lighting. Regenerate mesh after changing. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings|Debug")
@@ -85,7 +85,7 @@ struct SVGMESHIMPORTERRUNTIME_API FSvgMeshSettings
 	bool bFlipY = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings", meta = (DisplayName = "Flip X"))
-	bool bFlipX = false;
+	bool bFlipX = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SVG|Mesh Settings")
 	ESvgWindingRule WindingRule = ESvgWindingRule::NonZero;

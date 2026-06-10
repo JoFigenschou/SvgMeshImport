@@ -10,6 +10,7 @@
 
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "Materials/Material.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/Paths.h"
 
@@ -261,7 +262,13 @@ void ASvgMeshActor::ResetGeneratedMeshState()
 
 void ASvgMeshActor::ApplyMeshMaterial()
 {
-	if (!MeshMaterial)
+	UMaterialInterface* MaterialToApply = MeshMaterial;
+	if (!MaterialToApply)
+	{
+		MaterialToApply = UMaterial::GetDefaultMaterial(MD_Surface);
+	}
+
+	if (!MaterialToApply)
 	{
 		return;
 	}
@@ -272,7 +279,7 @@ void ASvgMeshActor::ApplyMeshMaterial()
 		if (IsValid(StaticMeshComponent)
 			&& SvgMeshActorPrivate::IsStaticMeshRenderable(StaticMeshComponent->GetStaticMesh()))
 		{
-			StaticMeshComponent->SetMaterial(0, MeshMaterial);
+			StaticMeshComponent->SetMaterial(0, MaterialToApply);
 			++AppliedCount;
 		}
 	}
@@ -281,14 +288,14 @@ void ASvgMeshActor::ApplyMeshMaterial()
 	{
 		if (IsValid(ShapeComponent) && ShapeComponent->GetNumSections() > 0)
 		{
-			ShapeComponent->SetMaterial(0, MeshMaterial);
+			ShapeComponent->SetMaterial(0, MaterialToApply);
 			++AppliedCount;
 		}
 	}
 
 	if (ProceduralMesh && ProceduralMesh->GetNumSections() > 0)
 	{
-		ProceduralMesh->SetMaterial(0, MeshMaterial);
+		ProceduralMesh->SetMaterial(0, MaterialToApply);
 		++AppliedCount;
 	}
 
@@ -297,18 +304,19 @@ void ASvgMeshActor::ApplyMeshMaterial()
 		return;
 	}
 
-	if (MeshMaterial->IsTwoSided())
+	if (MaterialToApply->IsTwoSided())
 	{
 		UE_LOG(LogSvgMeshImporter, Warning,
 			TEXT("[SvgMeshActor] '%s' material '%s' is two-sided. Disable Two Sided on the material for correct single-sided lighting with +Z component-local normals."),
 			*GetName(),
-			*MeshMaterial->GetName());
+			*MaterialToApply->GetName());
 	}
 
 	UE_LOG(LogSvgMeshImporter, Log,
-		TEXT("[SvgMeshActor] '%s' applied material '%s' to %d shape mesh component(s)."),
+		TEXT("[SvgMeshActor] '%s' applied material '%s'%s to %d shape mesh component(s)."),
 		*GetName(),
-		*MeshMaterial->GetName(),
+		*MaterialToApply->GetName(),
+		MeshMaterial ? TEXT("") : TEXT(" (engine default)"),
 		AppliedCount);
 }
 
@@ -421,6 +429,8 @@ void ASvgMeshActor::ApplyBakedStaticMeshShapes(
 		StaticMeshComponent->SetRelativeLocation(Entry.RelativeLocation);
 		StaticMeshComponent->SetVisibility(true);
 		StaticMeshComponent->SetHiddenInGame(false);
+		StaticMeshComponent->SetCollisionEnabled(
+			bCreateCollision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
 		StaticMeshComponent->CreationMethod = EComponentCreationMethod::Instance;
 		StaticMeshComponent->RegisterComponent();
 
@@ -738,13 +748,6 @@ bool ASvgMeshActor::RebuildMesh()
 		*CombinedBounds.Min.ToString(),
 		*CombinedBounds.Max.ToString(),
 		*GetActorLocation().ToString());
-
-	if (!MeshMaterial)
-	{
-		UE_LOG(LogSvgMeshImporter, Warning,
-			TEXT("[SvgMeshActor] '%s' Mesh Material is not set. Assign Mesh Material on the actor (SVG category) or meshes will be invisible."),
-			*GetName());
-	}
 
 	return true;
 }

@@ -2,10 +2,63 @@
 
 #include "MeshOps/SvgFlatCapMesh.h"
 #include "SvgMeshImporterLog.h"
+#include "Engine/CollisionProfile.h"
+#include "PhysicsEngine/BodySetup.h"
 #include "ProceduralMeshComponent.h"
 
 namespace SvgProceduralMeshBuilderPrivate
 {
+	static FBox ComputeVertexBounds(const TArray<FVector>& Vertices)
+	{
+		FBox Bounds(ForceInit);
+		for (const FVector& Vertex : Vertices)
+		{
+			Bounds += Vertex;
+		}
+		return Bounds;
+	}
+
+	static void ApplySimpleBoxCollision(UProceduralMeshComponent* Target, const FBox& LocalBounds, bool bCreateCollision)
+	{
+		if (!Target)
+		{
+			return;
+		}
+
+		Target->bUseComplexAsSimpleCollision = false;
+
+		if (!bCreateCollision || !LocalBounds.IsValid)
+		{
+			Target->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Target->ClearCollisionConvexMeshes();
+			return;
+		}
+
+		UBodySetup* BodySetup = Target->GetBodySetup();
+		if (!BodySetup)
+		{
+			return;
+		}
+
+		BodySetup->AggGeom.BoxElems.Reset();
+		BodySetup->AggGeom.ConvexElems.Reset();
+
+		FKBoxElem BoxElem;
+		BoxElem.Center = LocalBounds.GetCenter();
+		const FVector Size = LocalBounds.GetSize();
+		BoxElem.X = FMath::Max(Size.X, KINDA_SMALL_NUMBER);
+		BoxElem.Y = FMath::Max(Size.Y, KINDA_SMALL_NUMBER);
+		BoxElem.Z = FMath::Max(Size.Z, KINDA_SMALL_NUMBER);
+		BodySetup->AggGeom.BoxElems.Add(BoxElem);
+		BodySetup->CollisionTraceFlag = ECollisionTraceFlag::CTF_UseDefault;
+		BodySetup->InvalidatePhysicsData();
+		BodySetup->CreatePhysicsMeshes();
+
+		Target->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+		Target->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
+		Target->RecreatePhysicsState();
+	}
+
 	static bool UsesFlatCapBasis(const FSvgMeshData& Mesh)
 	{
 		if (Mesh.Normals.Num() != Mesh.Vertices.Num())
@@ -83,13 +136,10 @@ void FSvgProceduralMeshBuilder::ApplyMeshData(UProceduralMeshComponent* Target, 
 		UV0,
 		VertexColors,
 		LocalMesh.Tangents,
-		bCreateCollision);
+		false);
 
-	FBox MeshBounds(ForceInit);
-	for (const FVector& V : LocalMesh.Vertices)
-	{
-		MeshBounds += V;
-	}
+	const FBox MeshBounds = SvgProceduralMeshBuilderPrivate::ComputeVertexBounds(LocalMesh.Vertices);
+	SvgProceduralMeshBuilderPrivate::ApplySimpleBoxCollision(Target, MeshBounds, bCreateCollision);
 
 	UE_LOG(LogSvgMeshImporter, Log,
 		TEXT("[ProceduralMeshBuilder] '%s' section=%d verts=%d tris=%d collision=%s boundsMin=%s boundsMax=%s material=%s (component-local normals)"),
@@ -97,7 +147,7 @@ void FSvgProceduralMeshBuilder::ApplyMeshData(UProceduralMeshComponent* Target, 
 		SectionIndex,
 		LocalMesh.Vertices.Num(),
 		LocalMesh.Triangles.Num() / 3,
-		bCreateCollision ? TEXT("true") : TEXT("false"),
+		bCreateCollision ? TEXT("box") : TEXT("false"),
 		*MeshBounds.Min.ToString(),
 		*MeshBounds.Max.ToString(),
 		Target->GetMaterial(SectionIndex) ? *Target->GetMaterial(SectionIndex)->GetName() : TEXT("NONE"));
@@ -112,6 +162,7 @@ void FSvgProceduralMeshBuilder::ApplyShapeMeshes(UProceduralMeshComponent* Targe
 
 	ClearMesh(Target);
 
+	FBox CombinedBounds(ForceInit);
 	int32 AppliedSections = 0;
 	for (int32 ShapeIdx = 0; ShapeIdx < ShapeMeshes.Num(); ++ShapeIdx)
 	{
@@ -121,8 +172,18 @@ void FSvgProceduralMeshBuilder::ApplyShapeMeshes(UProceduralMeshComponent* Targe
 			continue;
 		}
 
-		ApplyMeshData(Target, ShapeMesh.MeshData, bCreateCollision, AppliedSections);
+		ApplyMeshData(Target, ShapeMesh.MeshData, false, AppliedSections);
+		CombinedBounds += SvgProceduralMeshBuilderPrivate::ComputeVertexBounds(ShapeMesh.MeshData.Vertices);
 		++AppliedSections;
+	}
+
+	if (bCreateCollision)
+	{
+		SvgProceduralMeshBuilderPrivate::ApplySimpleBoxCollision(Target, CombinedBounds, true);
+	}
+	else
+	{
+		SvgProceduralMeshBuilderPrivate::ApplySimpleBoxCollision(Target, FBox(ForceInit), false);
 	}
 
 	UE_LOG(LogSvgMeshImporter, Log,
